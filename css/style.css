@@ -1,4 +1,3 @@
-/* css/style.css */
 * {
   margin: 0;
   padding: 0;
@@ -117,10 +116,16 @@ h2 {
   opacity: 1;
   z-index: 10;
 }
+.hero-card .poster-container {
+  width: 100%;
+  height: 100%;
+  pointer-events: auto; /* container handles touches */
+}
 .hero-card img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  pointer-events: none; /* image doesn't block touch */
 }
 .hero-card .card-gradient {
   position: absolute;
@@ -145,6 +150,7 @@ h2 {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  pointer-events: none;
 }
 .hero-card .card-year {
   position: absolute;
@@ -154,6 +160,7 @@ h2 {
   font-size: 0.9rem;
   text-shadow: 0 1px 4px black;
   z-index: 2;
+  pointer-events: none;
 }
 .hero-card .card-rating {
   position: absolute;
@@ -169,6 +176,7 @@ h2 {
   border: 1px solid rgba(255,255,255,0.1);
   z-index: 2;
   box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  pointer-events: none;
 }
 
 /* ---------- HORIZONTAL SCROLL ROWS ---------- */
@@ -209,14 +217,16 @@ h2 {
   background: #1e1e1e;
   box-shadow: 0 8px 16px rgba(0,0,0,0.8);
   transition: box-shadow 0.2s;
+  pointer-events: auto;
 }
-.card-sm:hover .poster-container {
-  box-shadow: 0 16px 24px rgba(0,0,0,1);
-}
-.card-sm img {
+.card-sm .poster-container img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  pointer-events: none;
+}
+.card-sm .poster-container:hover {
+  box-shadow: 0 16px 24px rgba(0,0,0,1);
 }
 .card-sm .rating-badge {
   position: absolute;
@@ -232,6 +242,7 @@ h2 {
   border: 1px solid rgba(255,255,255,0.1);
   z-index: 3;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  pointer-events: none;
 }
 .card-sm .title {
   margin-top: 8px;
@@ -245,6 +256,7 @@ h2 {
   overflow: hidden;
   text-align: left;
   padding: 0 2px;
+  pointer-events: none;
 }
 
 /* ---------- SEARCH PAGE ---------- */
@@ -491,11 +503,13 @@ h2 {
   overflow: hidden;
   background: #1e1e1e;
   box-shadow: 0 8px 16px rgba(0,0,0,0.8);
+  pointer-events: auto;
 }
-.watchlist-card img {
+.watchlist-card .poster-container img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  pointer-events: none;
 }
 .watchlist-card .title {
   margin-top: 6px;
@@ -507,6 +521,7 @@ h2 {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  pointer-events: none;
 }
 .watchlist-card .remove-btn {
   position: absolute;
@@ -526,6 +541,7 @@ h2 {
   cursor: pointer;
   z-index: 5;
   transition: background 0.2s;
+  pointer-events: auto;
 }
 .watchlist-card .remove-btn:hover {
   background: rgba(200,50,50,0.9);
@@ -541,6 +557,7 @@ h2 {
   font-size: 0.55rem;
   color: #ccc;
   border: 1px solid rgba(255,255,255,0.1);
+  pointer-events: none;
 }
 .empty-watchlist {
   text-align: center;
@@ -786,6 +803,7 @@ body.modal-open {
 .details-poster img {
   width: 100%;
   display: block;
+  pointer-events: none;
 }
 .details-info {
   flex: 1;
@@ -859,6 +877,7 @@ body.modal-open {
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid rgba(255,255,255,0.1);
+  pointer-events: none;
 }
 .cast-item .name {
   font-size: 0.7rem;
@@ -867,6 +886,7 @@ body.modal-open {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  pointer-events: none;
 }
 .details-actions {
   display: flex;

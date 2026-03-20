@@ -9,7 +9,9 @@ window.createHeroCard = function(movie) {
   const year = movie.release_date ? movie.release_date.split('-')[0] : 'N/A';
   const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'NR';
   card.innerHTML = `
-    <img src="${poster}" alt="${movie.title}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450?text=No+Image'">
+    <div class="poster-container">
+      <img src="${poster}" alt="${movie.title}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450?text=No+Image'">
+    </div>
     <div class="card-gradient"></div>
     <div class="card-title">${movie.title}</div>
     <div class="card-year">${year}</div>
@@ -62,13 +64,14 @@ window.createWatchlistCard = function(item, onRemove) {
   return card;
 };
 
-// ---------- ROBUST TOUCH & TAP HANDLING ----------
+// ---------- TOUCH-FRIENDLY HANDLER ----------
 function attachCardHandlers(card) {
   let pressTimer = null;
   let longPressTriggered = false;
-  let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+  let startX = 0, startY = 0;
   let isScrolling = false;
 
+  // Clear timer and reset state
   const cancelPress = () => {
     if (pressTimer) {
       clearTimeout(pressTimer);
@@ -77,20 +80,19 @@ function attachCardHandlers(card) {
     longPressTriggered = false;
   };
 
+  // Touch start
   const handleTouchStart = (e) => {
-    // Prevent default to avoid image drag/menu
-    e.preventDefault();
+    // Do NOT prevent default – allow scrolling
     const touch = e.touches[0];
-    touchStartX = touch.clientX;
-    touchStartY = touch.clientY;
-    touchStartTime = Date.now();
+    startX = touch.clientX;
+    startY = touch.clientY;
     isScrolling = false;
     longPressTriggered = false;
 
+    // Start long press timer
     pressTimer = setTimeout(() => {
       longPressTriggered = true;
       if (navigator.vibrate) navigator.vibrate(30);
-      // Open add modal
       const id = card.dataset.id;
       const type = card.dataset.type;
       const title = card.querySelector('.card-title')?.textContent || card.querySelector('.title')?.textContent || '';
@@ -100,40 +102,38 @@ function attachCardHandlers(card) {
     }, 500);
   };
 
+  // Touch move – detect scrolling
   const handleTouchMove = (e) => {
     if (!pressTimer) return;
     const touch = e.touches[0];
-    const deltaX = Math.abs(touch.clientX - touchStartX);
-    const deltaY = Math.abs(touch.clientY - touchStartY);
+    const deltaX = Math.abs(touch.clientX - startX);
+    const deltaY = Math.abs(touch.clientY - startY);
     if (deltaX > 8 || deltaY > 8) {
-      // User is scrolling – cancel press and mark scrolling
+      // User is scrolling – cancel long press
       isScrolling = true;
       cancelPress();
     }
   };
 
+  // Touch end – decide tap or nothing
   const handleTouchEnd = (e) => {
-    e.preventDefault();
-    const touchDuration = Date.now() - touchStartTime;
-
     if (pressTimer) {
       clearTimeout(pressTimer);
       pressTimer = null;
     }
 
     if (longPressTriggered) {
-      // Long press already handled
+      // Already handled
       longPressTriggered = false;
       return;
     }
 
-    // Only trigger tap if not scrolling and duration < 200ms
-    if (!isScrolling && touchDuration < 200) {
-      // Open details modal
+    if (!isScrolling) {
+      // It was a tap – open details
       const id = card.dataset.id;
       const type = card.dataset.type;
       if (id && type) {
-        // Slight debounce before opening modal
+        // Small delay to avoid conflict with click events
         setTimeout(() => {
           showItemDetails(id, type);
         }, 50);
@@ -142,18 +142,18 @@ function attachCardHandlers(card) {
     isScrolling = false;
   };
 
+  // Touch cancel (e.g., gesture interrupted)
   const handleTouchCancel = () => {
     cancelPress();
     isScrolling = false;
   };
 
-  // Mouse events for desktop (simplified – no scroll detection needed)
+  // Mouse events (desktop) – simplified
   const handleMouseDown = (e) => {
     if (e.target.closest('.remove-btn')) return;
-    e.preventDefault();
-    touchStartX = e.clientX;
-    touchStartY = e.clientY;
-    touchStartTime = Date.now();
+    startX = e.clientX;
+    startY = e.clientY;
+    isScrolling = false;
     longPressTriggered = false;
 
     pressTimer = setTimeout(() => {
@@ -166,6 +166,16 @@ function attachCardHandlers(card) {
       const item = { id: Number(id), title, poster };
       showAddModal(item);
     }, 500);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!pressTimer) return;
+    const deltaX = Math.abs(e.clientX - startX);
+    const deltaY = Math.abs(e.clientY - startY);
+    if (deltaX > 8 || deltaY > 8) {
+      isScrolling = true;
+      cancelPress();
+    }
   };
 
   const handleMouseUp = (e) => {
@@ -177,8 +187,7 @@ function attachCardHandlers(card) {
       longPressTriggered = false;
       return;
     }
-    const duration = Date.now() - touchStartTime;
-    if (duration < 200) {
+    if (!isScrolling) {
       const id = card.dataset.id;
       const type = card.dataset.type;
       if (id && type) {
@@ -187,20 +196,23 @@ function attachCardHandlers(card) {
         }, 50);
       }
     }
+    isScrolling = false;
   };
 
   const handleMouseLeave = () => {
     cancelPress();
+    isScrolling = false;
   };
 
-  // Attach touch events
-  card.addEventListener('touchstart', handleTouchStart, { passive: false });
-  card.addEventListener('touchmove', handleTouchMove, { passive: false });
-  card.addEventListener('touchend', handleTouchEnd, { passive: false });
-  card.addEventListener('touchcancel', handleTouchCancel);
+  // Attach touch events with passive: true (allows native scroll)
+  card.addEventListener('touchstart', handleTouchStart, { passive: true });
+  card.addEventListener('touchmove', handleTouchMove, { passive: true });
+  card.addEventListener('touchend', handleTouchEnd, { passive: true });
+  card.addEventListener('touchcancel', handleTouchCancel, { passive: true });
 
-  // Mouse events
+  // Mouse events (no passive needed)
   card.addEventListener('mousedown', handleMouseDown);
+  card.addEventListener('mousemove', handleMouseMove);
   card.addEventListener('mouseup', handleMouseUp);
   card.addEventListener('mouseleave', handleMouseLeave);
 }
@@ -213,7 +225,7 @@ window.enableDragScroll = function(container) {
     container.style.scrollSnapType = 'none';
     startX = e.pageX - container.offsetLeft;
     scrollLeft = container.scrollLeft;
-    e.preventDefault();
+    e.preventDefault(); // only here for desktop drag, not touch
   });
   container.addEventListener('mouseleave', () => { isDown = false; container.style.scrollSnapType = 'x mandatory'; });
   container.addEventListener('mouseup', () => { isDown = false; container.style.scrollSnapType = 'x mandatory'; });
