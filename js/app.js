@@ -75,7 +75,7 @@ function initModals() {
   });
 }
 
-// ---------- HOME ----------
+// ---------- HOME (unchanged) ----------
 async function initHome() {
   const heroContainer = document.getElementById('heroCarousel');
   const trendingScroll = document.getElementById('trendingScroll');
@@ -112,7 +112,6 @@ async function initHome() {
     if (!activeCard) return;
     const next = activeCard.nextElementSibling || container.firstElementChild;
     if (next) {
-      // Calculate next card's scroll position
       const containerRect = container.getBoundingClientRect();
       const cardRect = next.getBoundingClientRect();
       const targetLeft = container.scrollLeft + (cardRect.left - containerRect.left) - (containerRect.width / 2) + (cardRect.width / 2);
@@ -155,10 +154,15 @@ function initSearch() {
       searchState.query = '';
       return;
     }
+    // Reset state
     searchState.query = query;
     searchState.page = 1;
+    searchState.totalPages = 1;
     searchState.hasMore = true;
-    grid.innerHTML = '';
+    searchState.loading = false;
+    grid.innerHTML = ''; // clear old results
+
+    // Show loading at top
     const loader = document.createElement('div');
     loader.className = 'loading-spinner';
     loader.id = 'searchLoader';
@@ -169,6 +173,7 @@ function initSearch() {
     }, 400);
   });
 
+  // Infinite scroll listener
   window.addEventListener('scroll', () => {
     if (!searchState.query || searchState.loading || !searchState.hasMore) return;
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
@@ -183,10 +188,24 @@ async function loadSearchResults(query, page, replace = false) {
   searchState.loading = true;
 
   const grid = document.getElementById('searchResults');
+  // Remove any existing loader
   const loader = document.getElementById('searchLoader');
   if (loader) loader.remove();
 
+  // Show a bottom loader if appending
+  if (!replace) {
+    const bottomLoader = document.createElement('div');
+    bottomLoader.className = 'loading-spinner';
+    bottomLoader.id = 'bottomLoader';
+    grid.appendChild(bottomLoader);
+  }
+
   const data = await fetchSearchMulti(query, page);
+  
+  // Remove bottom loader if present
+  const bottomLoader = document.getElementById('bottomLoader');
+  if (bottomLoader) bottomLoader.remove();
+
   if (!data || data.length === 0) {
     searchState.hasMore = false;
     searchState.loading = false;
@@ -196,8 +215,10 @@ async function loadSearchResults(query, page, replace = false) {
     return;
   }
 
+  // Filter out people and items without poster
   let results = data.filter(item => item.media_type !== 'person' && item.poster_path);
 
+  // Sort: exact match first, then by popularity
   results.sort((a, b) => {
     const titleA = (a.title || a.name || '').toLowerCase();
     const titleB = (b.title || b.name || '').toLowerCase();
@@ -217,14 +238,16 @@ async function loadSearchResults(query, page, replace = false) {
 
   searchState.page = page;
   searchState.loading = false;
-  searchState.hasMore = page < (data.total_pages || 1);
+  searchState.totalPages = data.total_pages || 1;
+  searchState.hasMore = page < searchState.totalPages;
 
+  // Add a hidden loader at bottom for next page
   if (searchState.hasMore) {
-    const newLoader = document.createElement('div');
-    newLoader.className = 'loading-spinner';
-    newLoader.id = 'searchLoader';
-    newLoader.style.display = 'none';
-    grid.appendChild(newLoader);
+    const nextLoader = document.createElement('div');
+    nextLoader.className = 'loading-spinner';
+    nextLoader.id = 'searchLoader';
+    nextLoader.style.display = 'none';
+    grid.appendChild(nextLoader);
   }
 }
 

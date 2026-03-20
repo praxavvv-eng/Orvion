@@ -15,7 +15,7 @@ window.createHeroCard = function(movie) {
     <div class="card-year">${year}</div>
     <div class="card-rating">⭐ ${rating}</div>
   `;
-  attachLongPress(card);
+  attachCardHandlers(card);
   return card;
 };
 
@@ -35,7 +35,7 @@ window.createSmallCard = function(item) {
     </div>
     <div class="title">${title}</div>
   `;
-  attachLongPress(card);
+  attachCardHandlers(card);
   return card;
 };
 
@@ -58,18 +58,17 @@ window.createWatchlistCard = function(item, onRemove) {
     e.stopPropagation();
     onRemove(item.id, item.category);
   });
-  attachLongPress(card);
+  attachCardHandlers(card);
   return card;
 };
 
-// ---------- TOUCH & LONG PRESS DETECTION ----------
-function attachLongPress(card) {
+// ---------- ROBUST TOUCH & TAP HANDLING ----------
+function attachCardHandlers(card) {
   let pressTimer = null;
   let longPressTriggered = false;
+  let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
   let isScrolling = false;
-  let startX, startY;
 
-  // Helper to clear timer and reset state
   const cancelPress = () => {
     if (pressTimer) {
       clearTimeout(pressTimer);
@@ -79,11 +78,12 @@ function attachLongPress(card) {
   };
 
   const handleTouchStart = (e) => {
-    // Prevent default to avoid image download menu on long press
+    // Prevent default to avoid image drag/menu
     e.preventDefault();
     const touch = e.touches[0];
-    startX = touch.clientX;
-    startY = touch.clientY;
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchStartTime = Date.now();
     isScrolling = false;
     longPressTriggered = false;
 
@@ -103,10 +103,10 @@ function attachLongPress(card) {
   const handleTouchMove = (e) => {
     if (!pressTimer) return;
     const touch = e.touches[0];
-    const deltaX = Math.abs(touch.clientX - startX);
-    const deltaY = Math.abs(touch.clientY - startY);
-    if (deltaX > 10 || deltaY > 10) {
-      // user is scrolling – cancel press
+    const deltaX = Math.abs(touch.clientX - touchStartX);
+    const deltaY = Math.abs(touch.clientY - touchStartY);
+    if (deltaX > 8 || deltaY > 8) {
+      // User is scrolling – cancel press and mark scrolling
       isScrolling = true;
       cancelPress();
     }
@@ -114,33 +114,46 @@ function attachLongPress(card) {
 
   const handleTouchEnd = (e) => {
     e.preventDefault();
+    const touchDuration = Date.now() - touchStartTime;
+
     if (pressTimer) {
       clearTimeout(pressTimer);
       pressTimer = null;
     }
+
     if (longPressTriggered) {
-      // already handled
+      // Long press already handled
       longPressTriggered = false;
       return;
     }
-    if (!isScrolling) {
-      // treat as tap – open details
+
+    // Only trigger tap if not scrolling and duration < 200ms
+    if (!isScrolling && touchDuration < 200) {
+      // Open details modal
       const id = card.dataset.id;
       const type = card.dataset.type;
       if (id && type) {
-        showItemDetails(id, type);
+        // Slight debounce before opening modal
+        setTimeout(() => {
+          showItemDetails(id, type);
+        }, 50);
       }
     }
     isScrolling = false;
   };
 
-  // Mouse events for desktop
+  const handleTouchCancel = () => {
+    cancelPress();
+    isScrolling = false;
+  };
+
+  // Mouse events for desktop (simplified – no scroll detection needed)
   const handleMouseDown = (e) => {
     if (e.target.closest('.remove-btn')) return;
-    e.preventDefault(); // prevent image drag
-    startX = e.clientX;
-    startY = e.clientY;
-    isScrolling = false;
+    e.preventDefault();
+    touchStartX = e.clientX;
+    touchStartY = e.clientY;
+    touchStartTime = Date.now();
     longPressTriggered = false;
 
     pressTimer = setTimeout(() => {
@@ -155,16 +168,6 @@ function attachLongPress(card) {
     }, 500);
   };
 
-  const handleMouseMove = (e) => {
-    if (!pressTimer) return;
-    const deltaX = Math.abs(e.clientX - startX);
-    const deltaY = Math.abs(e.clientY - startY);
-    if (deltaX > 10 || deltaY > 10) {
-      isScrolling = true;
-      cancelPress();
-    }
-  };
-
   const handleMouseUp = (e) => {
     if (pressTimer) {
       clearTimeout(pressTimer);
@@ -174,30 +177,30 @@ function attachLongPress(card) {
       longPressTriggered = false;
       return;
     }
-    if (!isScrolling) {
+    const duration = Date.now() - touchStartTime;
+    if (duration < 200) {
       const id = card.dataset.id;
       const type = card.dataset.type;
       if (id && type) {
-        showItemDetails(id, type);
+        setTimeout(() => {
+          showItemDetails(id, type);
+        }, 50);
       }
     }
-    isScrolling = false;
   };
 
   const handleMouseLeave = () => {
     cancelPress();
-    isScrolling = false;
   };
 
   // Attach touch events
   card.addEventListener('touchstart', handleTouchStart, { passive: false });
   card.addEventListener('touchmove', handleTouchMove, { passive: false });
   card.addEventListener('touchend', handleTouchEnd, { passive: false });
-  card.addEventListener('touchcancel', cancelPress);
+  card.addEventListener('touchcancel', handleTouchCancel);
 
-  // Attach mouse events
+  // Mouse events
   card.addEventListener('mousedown', handleMouseDown);
-  card.addEventListener('mousemove', handleMouseMove);
   card.addEventListener('mouseup', handleMouseUp);
   card.addEventListener('mouseleave', handleMouseLeave);
 }

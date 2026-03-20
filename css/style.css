@@ -1,3 +1,4 @@
+/* css/style.css */
 * {
   margin: 0;
   padding: 0;
@@ -906,7 +907,7 @@ body.modal-open {
   transform: translateY(-2px);
 }
 
-/* toast */
+/* ---------- TOAST ---------- */
 .toast {
   position: fixed;
   bottom: 100px;
@@ -931,6 +932,7 @@ body.modal-open {
 .toast.success { background: #1e3a2e; border-color: #2a7a3b; }
 .toast.error { background: #3e1e1e; border-color: #a13a3a; }
 
+/* ---------- LOADING SPINNER ---------- */
 .loading-spinner {
   text-align: center;
   padding: 30px;
@@ -948,27 +950,11 @@ body.modal-open {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }/* Add these rules to the existing style.css (anywhere) */
-
-/* Disable image dragging and selection */
-img {
-  -webkit-user-drag: none;
-  -khtml-user-drag: none;
-  -moz-user-drag: none;
-  -o-user-drag: none;
-  user-drag: none;
-  user-select: none;
-  -webkit-touch-callout: none; /* disable long-press menu on iOS */
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-/* Tap feedback */
-.card-sm:active,
-.hero-card:active,
-.watchlist-card:active {
-  transform: scale(0.98);
-  transition: transform 0.1s;
-}
-
+/* ---------- EMPTY MESSAGE ---------- */
 .empty-message {
   text-align: center;
   padding: 40px 20px;
@@ -976,4 +962,30 @@ img {
   background: rgba(30,30,30,0.3);
   border-radius: 20px;
   margin: 20px;
+}
+
+/* ---------- IMAGE DRAG PREVENTION & TAP FEEDBACK ---------- */
+img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.card-sm:active,
+.hero-card:active,
+.watchlist-card:active {
+  transform: scale(0.98);
+  transition: transform 0.1s;
+}
+
+/* Ensure loading spinner for infinite scroll is visible */
+.loading-spinner {
+  text-align: center;
+  padding: 20px;
+  color: #aaa;
+  grid-column: 1 / -1;
 }
