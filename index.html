@@ -8,41 +8,39 @@
 </head>
 <body class="home-page">
   <main>
-    <!-- 1. HERO CAROUSEL -->
+    <!-- Hero carousel -->
     <section class="hero">
       <div class="hero-carousel" id="heroCarousel"></div>
     </section>
 
-    <!-- 2. TRENDING SECTION -->
+    <!-- Trending row -->
     <section class="trending">
       <h2>Trending</h2>
       <div class="horizontal-scroll" id="trendingScroll"></div>
     </section>
 
-    <!-- 3. POPULAR SECTION -->
+    <!-- Popular row -->
     <section class="popular">
       <h2>Popular</h2>
       <div class="horizontal-scroll" id="popularScroll"></div>
     </section>
 
-    <!-- 4. MOVIES SECTION -->
-    <section class="movies">
-      <h2>Movies</h2>
-      <div class="horizontal-scroll" id="moviesScroll"></div>
-    </section>
-
-    <!-- 5. TV SERIES SECTION -->
-    <section class="tv">
-      <h2>TV Series</h2>
-      <div class="horizontal-scroll" id="tvScroll"></div>
+    <!-- Top Rated row -->
+    <section class="top-rated">
+      <h2>Top Rated</h2>
+      <div class="horizontal-scroll" id="topRatedScroll"></div>
     </section>
   </main>
 
-  <!-- floating bottom navigation -->
+  <!-- Bottom navigation -->
   <nav class="bottom-nav">
     <a href="index.html" class="nav-item active">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10l9-7 9 7v11h-6v-7h-6v7H3z"/></svg>
       <span>Home</span>
+    </a>
+    <a href="discover.html" class="nav-item">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span>Discovery</span>
     </a>
     <a href="search.html" class="nav-item">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -54,14 +52,15 @@
     </a>
   </nav>
 
-  <!-- modals (unchanged) -->
+  <!-- Add to watchlist modal (fixed dropdown) -->
   <div class="modal" id="addModal">
-    <div class="modal-content add-modal-content glass-premium">
+    <div class="modal-content add-modal-content glass">
       <div class="modal-header">
         <h3>Add to watchlist</h3>
         <p class="modal-subtitle">Choose category and status</p>
       </div>
       <div class="modal-body">
+        <!-- Category dropdown -->
         <div class="input-group">
           <label>Category</label>
           <div class="custom-dropdown" id="categoryDropdown">
@@ -74,6 +73,7 @@
             </div>
           </div>
         </div>
+        <!-- Status dropdown -->
         <div class="input-group">
           <label>Status</label>
           <div class="custom-dropdown" id="statusDropdown">
@@ -88,11 +88,12 @@
       </div>
       <div class="modal-actions">
         <button class="btn btn-secondary glass-btn" id="modalCancel">Cancel</button>
-        <button class="btn btn-primary gradient-btn" id="modalSave">Save</button>
+        <button class="btn btn-primary accent-btn" id="modalSave">Save</button>
       </div>
     </div>
   </div>
 
+  <!-- Details modal (unchanged) -->
   <div class="modal" id="detailsModal">
     <div class="modal-content details-modal glass">
       <button class="close-btn" id="closeDetails">&times;</button>
@@ -112,8 +113,8 @@
           <p id="detailsOverview"></p>
           <div class="details-cast" id="detailsCast"></div>
           <div class="details-actions">
-            <button class="btn details-add-btn" id="detailsAddBtn">Add to watchlist</button>
-            <a href="#" class="btn trailer-btn" id="trailerBtn" target="_blank">▶ Watch Trailer</a>
+            <button class="btn details-add-btn accent-btn" id="detailsAddBtn">Add to watchlist</button>
+            <a href="#" class="btn trailer-btn glass-btn" id="trailerBtn" target="_blank">▶ Watch Trailer</a>
           </div>
         </div>
       </div>

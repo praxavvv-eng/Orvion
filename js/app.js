@@ -1,55 +1,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
-  // Modal elements
-  const addModal = document.getElementById('addModal');
-  const detailsModal = document.getElementById('detailsModal');
-
-  // Add modal custom dropdowns
   initCustomDropdowns();
+  initModals();
 
-  // Add modal listeners
-  document.getElementById('modalCancel')?.addEventListener('click', hideAddModal);
-  document.getElementById('modalSave')?.addEventListener('click', () => {
-    if (!currentAddItem) return;
-    const category = document.querySelector('#categoryDropdown .dropdown-option.selected')?.dataset.value || 'movie';
-    const status = document.querySelector('#statusDropdown .dropdown-option.selected')?.dataset.value || 'plan';
-    const item = {
-      id: currentAddItem.id,
-      title: currentAddItem.title,
-      poster: currentAddItem.poster,
-      category: category,
-      status: status
-    };
-    const added = window.watchlist.add(item);
-    if (!added) {
-      showToast('Already in watchlist', 'error');
-    } else {
-      showToast('Added to watchlist', 'success');
-    }
-    hideAddModal();
-    if (document.body.classList.contains('watchlist-page')) {
-      renderWatchlistForStatus(currentStatus);
-    }
-  });
-
-  // Details modal close
-  document.getElementById('closeDetails')?.addEventListener('click', hideDetailsModal);
-  detailsModal?.addEventListener('click', (e) => {
-    if (e.target === detailsModal) hideDetailsModal();
-  });
-
-  // Details add button
-  document.getElementById('detailsAddBtn')?.addEventListener('click', () => {
-    if (!currentMovie) return;
-    currentAddItem = {
-      id: currentMovie.id,
-      title: currentMovie.title,
-      poster: currentMovie.poster_path ? IMG_BASE + currentMovie.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
-    };
-    hideDetailsModal();
-    showAddModal(currentAddItem);
-  });
-
-  // Page initialization
   if (document.body.classList.contains('home-page')) {
     initHome();
   } else if (document.body.classList.contains('search-page')) {
@@ -57,20 +9,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else if (document.body.classList.contains('watchlist-page')) {
     initWatchlistTabs();
     renderWatchlistForStatus('plan');
+  } else if (document.body.classList.contains('discover-page')) {
+    // discover.js handles itself
   }
 
-  // Global click: card click for details, remove button handled in watchlist card creation
+  // Global click: card click for details
   document.addEventListener('click', async (e) => {
     const card = e.target.closest('.card-sm, .hero-card, .watchlist-card');
     if (card && !e.target.classList.contains('remove-btn')) {
-      const movieId = card.dataset.id;
-      if (movieId) {
-        showMovieDetails(movieId);
+      const id = card.dataset.id;
+      const type = card.dataset.type; // 'movie' or 'tv'
+      if (id && type) {
+        showItemDetails(id, type);
       }
     }
   });
 
-  // Close dropdowns when clicking outside
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.custom-dropdown')) {
       document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
@@ -78,12 +32,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 });
 
-// ---------- Custom Dropdown Initialization ----------
 function initCustomDropdowns() {
   document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
     const selected = dropdown.querySelector('.dropdown-selected');
     const options = dropdown.querySelectorAll('.dropdown-option');
-
     if (!dropdown.querySelector('.dropdown-option.selected')) {
       const first = options[0];
       if (first) {
@@ -91,12 +43,10 @@ function initCustomDropdowns() {
         selected.textContent = first.textContent;
       }
     }
-
     selected.addEventListener('click', (e) => {
       e.stopPropagation();
       dropdown.classList.toggle('open');
     });
-
     options.forEach(opt => {
       opt.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -109,143 +59,141 @@ function initCustomDropdowns() {
   });
 }
 
-// ---------- HOME PAGE (simplified, static rows) ----------
-async function initHome() {
-  // 1. Hero carousel (trending)
-  const heroContainer = document.getElementById('heroCarousel');
-  const trendingData = await window.fetchTrending().catch(() => []);
-  if (trendingData.length) {
-    trendingData.slice(0, 8).forEach(movie => {
-      heroContainer.appendChild(window.createHeroCard(movie));
-    });
-    setTimeout(() => {
-      window.centerFirstHeroCard(heroContainer);
-    }, 50);
-    const firstCard = heroContainer.querySelector('.hero-card');
-    if (firstCard) firstCard.classList.add('active');
-    window.enableDragScroll(heroContainer);
-    window.observeHeroCards(heroContainer);
-  } else {
-    heroContainer.innerHTML = '<div class="empty-message">No trending movies</div>';
-  }
-
-  // 2. Trending row
-  const trendingScroll = document.getElementById('trendingScroll');
-  if (trendingData.length) {
-    trendingData.slice(0, 12).forEach(movie => {
-      trendingScroll.appendChild(window.createSmallCard(movie));
-    });
-  } else {
-    trendingScroll.innerHTML = '<div class="empty-message">No data</div>';
-  }
-
-  // 3. Popular row
-  const popularScroll = document.getElementById('popularScroll');
-  const popularData = await window.fetchPopular().catch(() => []);
-  if (popularData.length) {
-    popularData.slice(0, 12).forEach(movie => {
-      popularScroll.appendChild(window.createSmallCard(movie));
-    });
-  } else {
-    popularScroll.innerHTML = '<div class="empty-message">No data</div>';
-  }
-
-  // 4. Movies row (use popular again or discover? we'll use popular for simplicity)
-  const moviesScroll = document.getElementById('moviesScroll');
-  if (popularData.length) {
-    popularData.slice(0, 12).forEach(movie => {
-      moviesScroll.appendChild(window.createSmallCard(movie));
-    });
-  } else {
-    moviesScroll.innerHTML = '<div class="empty-message">No data</div>';
-  }
-
-  // 5. TV Series row
-  const tvScroll = document.getElementById('tvScroll');
-  const tvData = await window.fetchTVPopular().catch(() => []);
-  if (tvData.length) {
-    tvData.slice(0, 12).forEach(show => {
-      // Ensure title property
-      if (!show.title && show.name) show.title = show.name;
-      tvScroll.appendChild(window.createSmallCard(show));
-    });
-  } else {
-    tvScroll.innerHTML = '<div class="empty-message">No data</div>';
-  }
+function initModals() {
+  document.getElementById('modalCancel')?.addEventListener('click', hideAddModal);
+  document.getElementById('modalSave')?.addEventListener('click', () => {
+    if (!currentAddItem) return;
+    const category = document.querySelector('#categoryDropdown .dropdown-option.selected')?.dataset.value || 'movie';
+    const status = document.querySelector('#statusDropdown .dropdown-option.selected')?.dataset.value || 'plan';
+    const item = {
+      id: currentAddItem.id,
+      title: currentAddItem.title,
+      poster: currentAddItem.poster,
+      category, status
+    };
+    const added = window.watchlist.add(item);
+    showToast(added ? 'Added to watchlist' : 'Already in watchlist', added ? 'success' : 'error');
+    hideAddModal();
+    if (document.body.classList.contains('watchlist-page')) renderWatchlistForStatus(currentStatus);
+  });
+  document.getElementById('closeDetails')?.addEventListener('click', hideDetailsModal);
+  document.getElementById('detailsModal')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('detailsModal')) hideDetailsModal();
+  });
+  document.getElementById('detailsAddBtn')?.addEventListener('click', () => {
+    if (!currentItem) return;
+    currentAddItem = {
+      id: currentItem.id,
+      title: currentItem.title || currentItem.name,
+      poster: currentItem.poster_path ? IMG_BASE + currentItem.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
+    };
+    hideDetailsModal();
+    showAddModal(currentAddItem);
+  });
 }
 
-// ---------- SEARCH PAGE ----------
-let searchRequestId = 0;
+// ---------- HOME (unchanged, but uses createSmallCard from ui.js) ----------
+async function initHome() {
+  const heroContainer = document.getElementById('heroCarousel');
+  const trendingScroll = document.getElementById('trendingScroll');
+  const popularScroll = document.getElementById('popularScroll');
+  const topRatedScroll = document.getElementById('topRatedScroll');
 
+  let heroMovies = [];
+  const lastHeroUpdate = localStorage.getItem('heroLastUpdate');
+  const today = new Date().toDateString();
+  if (lastHeroUpdate === today) {
+    heroMovies = JSON.parse(localStorage.getItem('heroMovies') || '[]');
+  } else {
+    const [trending, popular, topRated] = await Promise.all([
+      fetchTrending(), fetchPopular(), fetchTopRated()
+    ]);
+    heroMovies = [...trending, ...popular, ...topRated]
+      .sort(() => 0.5 - Math.random())
+      .slice(0, 10);
+    localStorage.setItem('heroMovies', JSON.stringify(heroMovies));
+    localStorage.setItem('heroLastUpdate', today);
+  }
+
+  heroMovies.forEach(movie => heroContainer.appendChild(createHeroCard(movie)));
+  setTimeout(() => centerFirstHeroCard(heroContainer), 50);
+  const firstCard = heroContainer.querySelector('.hero-card');
+  if (firstCard) firstCard.classList.add('active');
+  enableDragScroll(heroContainer);
+  observeHeroCards(heroContainer);
+
+  let autoSlideInterval = setInterval(() => {
+    const container = heroContainer;
+    const activeCard = container.querySelector('.hero-card.active');
+    if (!activeCard) return;
+    const next = activeCard.nextElementSibling || container.firstElementChild;
+    if (next) {
+      next.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, 4000);
+  heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval));
+  heroContainer.addEventListener('mousedown', () => clearInterval(autoSlideInterval));
+
+  const trending = await fetchTrending();
+  const popular = await fetchPopular();
+  const topRated = await fetchTopRated();
+  trending.slice(0, 12).forEach(m => trendingScroll.appendChild(createSmallCard(m)));
+  popular.slice(0, 12).forEach(m => popularScroll.appendChild(createSmallCard(m)));
+  topRated.slice(0, 12).forEach(m => topRatedScroll.appendChild(createSmallCard(m)));
+}
+
+// ---------- SEARCH (unchanged) ----------
+let searchRequestId = 0;
 function initSearch() {
   const input = document.getElementById('searchInput');
-  const resultsGrid = document.getElementById('searchResults');
+  const grid = document.getElementById('searchResults');
   let timeout;
-
   input.addEventListener('input', (e) => {
     clearTimeout(timeout);
     const query = e.target.value;
-    const currentRequestId = ++searchRequestId;
-
+    const reqId = ++searchRequestId;
     if (query.length < 2) {
-      resultsGrid.innerHTML = '';
+      grid.innerHTML = '';
       return;
     }
-
-    resultsGrid.innerHTML = '<div class="loading-spinner">Searching...</div>';
-
+    grid.innerHTML = '<div class="loading-spinner">Searching...</div>';
     timeout = setTimeout(async () => {
-      const results = await window.searchMovies(query).catch(() => []);
-      if (currentRequestId !== searchRequestId) return;
-
-      resultsGrid.innerHTML = '';
+      const results = await searchMovies(query);
+      if (reqId !== searchRequestId) return;
+      grid.innerHTML = '';
       if (results.length === 0) {
-        const noResults = document.createElement('p');
-        noResults.className = 'empty-message';
-        noResults.textContent = 'No results found';
-        resultsGrid.appendChild(noResults);
+        grid.innerHTML = '<p class="empty-message">No results found</p>';
       } else {
-        results.forEach(movie => {
-          resultsGrid.appendChild(window.createSmallCard(movie));
-        });
+        results.forEach(m => grid.appendChild(createSmallCard(m)));
       }
     }, 400);
   });
 }
 
-// ---------- WATCHLIST TABS (with sliding indicator) ----------
+// ---------- WATCHLIST (unchanged) ----------
 let currentStatus = 'plan';
-
 function initWatchlistTabs() {
   const tabsContainer = document.querySelector('.watchlist-tabs');
   const tabs = tabsContainer.querySelectorAll('.tab-btn');
   const indicator = tabsContainer.querySelector('.tab-indicator');
-
-  function moveIndicator(activeTab) {
-    const tabWidth = activeTab.offsetWidth;
-    const tabLeft = activeTab.offsetLeft;
-    indicator.style.width = tabWidth + 'px';
-    indicator.style.transform = `translateX(${tabLeft}px)`;
+  function moveIndicator(active) {
+    indicator.style.width = active.offsetWidth + 'px';
+    indicator.style.transform = `translateX(${active.offsetLeft}px)`;
   }
-
   setTimeout(() => {
     const active = tabsContainer.querySelector('.tab-btn.active');
     if (active) moveIndicator(active);
   }, 10);
-
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       if (tab.classList.contains('active')) return;
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       moveIndicator(tab);
-
-      const status = tab.dataset.status;
-      currentStatus = status;
-      renderWatchlistForStatus(status);
+      currentStatus = tab.dataset.status;
+      renderWatchlistForStatus(currentStatus);
     });
   });
-
   window.addEventListener('resize', () => {
     const active = tabsContainer.querySelector('.tab-btn.active');
     if (active) moveIndicator(active);
@@ -255,115 +203,94 @@ function initWatchlistTabs() {
 function renderWatchlistForStatus(status) {
   const container = document.getElementById('watchlistContent');
   container.classList.add('fade-out');
-
   setTimeout(() => {
     container.innerHTML = '';
-
     const categories = ['movie', 'series', 'anime', 'kdrama'];
-    const categoryLabels = { movie: 'Movies', series: 'Series', anime: 'Anime', kdrama: 'Kdrama' };
-
+    const labels = { movie: 'Movies', series: 'Series', anime: 'Anime', kdrama: 'Kdrama' };
     let hasAny = false;
-
     categories.forEach(cat => {
-      const items = window.watchlist.getByStatusAndCategory(status, cat);
-      if (items.length === 0) return;
-
+      const items = watchlist.getByStatusAndCategory(status, cat);
+      if (!items.length) return;
       hasAny = true;
-      const rowDiv = document.createElement('div');
-      rowDiv.className = 'category-row';
-
-      const titleDiv = document.createElement('div');
-      titleDiv.className = 'category-title';
-      titleDiv.innerHTML = `<h3>${categoryLabels[cat]}</h3><span class="category-badge">${items.length}</span>`;
-      rowDiv.appendChild(titleDiv);
-
-      const scrollDiv = document.createElement('div');
-      scrollDiv.className = 'row-scroll';
-
+      const row = document.createElement('div');
+      row.className = 'category-row';
+      row.innerHTML = `<div class="category-title"><h3>${labels[cat]}</h3><span class="category-badge">${items.length}</span></div>`;
+      const scroll = document.createElement('div');
+      scroll.className = 'row-scroll';
       items.forEach(item => {
-        const card = window.createWatchlistCard(item, (id, category) => {
-          window.watchlist.remove(id, category);
+        scroll.appendChild(createWatchlistCard(item, (id, cat) => {
+          watchlist.remove(id, cat);
           renderWatchlistForStatus(status);
           showToast('Removed from watchlist', 'success');
-        });
-        scrollDiv.appendChild(card);
+        }));
       });
-
-      rowDiv.appendChild(scrollDiv);
-      container.appendChild(rowDiv);
+      row.appendChild(scroll);
+      container.appendChild(row);
     });
-
     if (!hasAny) {
-      const emptyDiv = document.createElement('div');
-      emptyDiv.className = 'empty-watchlist';
-      emptyDiv.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-        <p>Start building your watchlist 🎬</p>
-      `;
-      container.appendChild(emptyDiv);
+      container.innerHTML = '<div class="empty-watchlist"><svg viewBox="0 0 24 24" stroke="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><p>Start building your watchlist</p></div>';
     }
-
     container.classList.remove('fade-out');
   }, 150);
 }
 
-// ---------- Movie Details ----------
-let currentMovie = null;
+// ---------- DETAILS (handles both movie and TV) ----------
+let currentItem = null; // renamed from currentMovie
 
-async function showMovieDetails(movieId) {
-  const movie = await window.fetchMovieDetails(movieId);
-  if (!movie) return;
-  currentMovie = movie;
+async function showItemDetails(id, type) {
+  let item;
+  if (type === 'movie') {
+    item = await fetchMovieDetails(id);
+  } else {
+    item = await fetchTVDetails(id);
+  }
+  if (!item) return;
+  currentItem = item;
 
-  const poster = movie.poster_path ? IMG_BASE + movie.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster';
-  const backdrop = movie.backdrop_path ? `url(${IMG_BASE_ORIGINAL + movie.backdrop_path})` : 'none';
+  // Normalize title and other fields
+  const title = item.title || item.name;
+  const releaseDate = item.release_date || item.first_air_date;
+  const year = releaseDate ? releaseDate.split('-')[0] : 'N/A';
+  const runtime = item.runtime || (item.episode_run_time ? item.episode_run_time[0] : null);
+
+  const poster = item.poster_path ? IMG_BASE + item.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster';
+  const backdrop = item.backdrop_path ? `url(${IMG_BASE_ORIGINAL + item.backdrop_path})` : 'none';
   
   document.getElementById('detailsBackdrop').style.backgroundImage = backdrop;
   document.getElementById('detailsPoster').src = poster;
-  document.getElementById('detailsTitle').textContent = movie.title;
-  document.getElementById('detailsYear').textContent = movie.release_date ? movie.release_date.split('-')[0] : 'N/A';
-  document.getElementById('detailsRating').innerHTML = `⭐ ${movie.vote_average ? movie.vote_average.toFixed(1) : 'NR'}`;
-  document.getElementById('detailsRuntime').textContent = movie.runtime ? movie.runtime + ' min' : '';
+  document.getElementById('detailsTitle').textContent = title;
+  document.getElementById('detailsYear').textContent = year;
+  document.getElementById('detailsRating').innerHTML = `⭐ ${item.vote_average ? item.vote_average.toFixed(1) : 'NR'}`;
+  document.getElementById('detailsRuntime').textContent = runtime ? runtime + ' min' : '';
   
   const genresContainer = document.getElementById('detailsGenres');
   genresContainer.innerHTML = '';
-  if (movie.genres) {
-    movie.genres.forEach(genre => {
-      const span = document.createElement('span');
-      span.className = 'genre-tag';
-      span.textContent = genre.name;
-      genresContainer.appendChild(span);
-    });
-  }
+  item.genres?.forEach(g => {
+    const span = document.createElement('span');
+    span.className = 'genre-tag';
+    span.textContent = g.name;
+    genresContainer.appendChild(span);
+  });
 
-  document.getElementById('detailsOverview').textContent = movie.overview || 'No overview available.';
+  document.getElementById('detailsOverview').textContent = item.overview || 'No overview available.';
 
-  // Cast
   const castContainer = document.getElementById('detailsCast');
   castContainer.innerHTML = '';
-  if (movie.credits && movie.credits.cast) {
-    movie.credits.cast.slice(0, 6).forEach(actor => {
+  if (item.credits?.cast) {
+    item.credits.cast.slice(0, 6).forEach(actor => {
       if (!actor.profile_path) return;
-      const castItem = document.createElement('div');
-      castItem.className = 'cast-item';
-      castItem.innerHTML = `
-        <img src="${IMG_BASE + actor.profile_path}" alt="${actor.name}">
-        <div class="name">${actor.name}</div>
-      `;
-      castContainer.appendChild(castItem);
+      const div = document.createElement('div');
+      div.className = 'cast-item';
+      div.innerHTML = `<img src="${IMG_BASE + actor.profile_path}" alt="${actor.name}"><div class="name">${actor.name}</div>`;
+      castContainer.appendChild(div);
     });
   }
 
-  // Trailer
   const trailerBtn = document.getElementById('trailerBtn');
-  if (movie.videos && movie.videos.results) {
-    const trailer = movie.videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
-    if (trailer) {
-      trailerBtn.href = `https://www.youtube.com/watch?v=${trailer.key}`;
-      trailerBtn.style.display = 'inline-block';
-    } else {
-      trailerBtn.style.display = 'none';
-    }
+  const trailer = item.videos?.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+  if (trailer) {
+    trailerBtn.href = `https://www.youtube.com/watch?v=${trailer.key}`;
+    trailerBtn.style.display = 'inline-block';
   } else {
     trailerBtn.style.display = 'none';
   }
@@ -375,33 +302,28 @@ async function showMovieDetails(movieId) {
 function hideDetailsModal() {
   document.body.classList.remove('modal-open');
   document.getElementById('detailsModal').classList.remove('show');
-  currentMovie = null;
+  currentItem = null;
 }
 
-// ---------- Add Modal ----------
+// ---------- ADD MODAL ----------
 let currentAddItem = null;
-
 function showAddModal(item) {
   currentAddItem = item;
   document.body.classList.add('modal-open');
   document.getElementById('addModal').classList.add('show');
-  document.body.style.overflow = 'hidden';
 }
-
 function hideAddModal() {
   document.body.classList.remove('modal-open');
   document.getElementById('addModal').classList.remove('show');
-  document.body.style.overflow = '';
   currentAddItem = null;
 }
 
-// ---------- Toast ----------
-function showToast(message, type = 'success') {
+// ---------- TOAST ----------
+function showToast(msg, type) {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.textContent = message;
+  toast.textContent = msg;
   document.body.appendChild(toast);
-
   setTimeout(() => toast.classList.add('show'), 10);
   setTimeout(() => {
     toast.classList.remove('show');
