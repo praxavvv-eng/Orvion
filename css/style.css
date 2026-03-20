@@ -948,7 +948,26 @@ body.modal-open {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }/* Add these rules to the existing style.css (anywhere) */
+
+/* Disable image dragging and selection */
+img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-touch-callout: none; /* disable long-press menu on iOS */
+}
+
+/* Tap feedback */
+.card-sm:active,
+.hero-card:active,
+.watchlist-card:active {
+  transform: scale(0.98);
+  transition: transform 0.1s;
+}
 
 .empty-message {
   text-align: center;

@@ -11,7 +11,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     initWatchlistTabs();
     renderWatchlistForStatus('plan');
   }
-  // No global click handler – now handled by per-card long press in ui.js
 });
 
 // ---------- Custom Dropdowns ----------
@@ -106,17 +105,25 @@ async function initHome() {
   enableDragScroll(heroContainer);
   observeHeroCards(heroContainer);
 
+  // Auto slide using container scroll (fixed)
   let autoSlideInterval = setInterval(() => {
     const container = heroContainer;
     const activeCard = container.querySelector('.hero-card.active');
     if (!activeCard) return;
     const next = activeCard.nextElementSibling || container.firstElementChild;
     if (next) {
-      next.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      // Calculate next card's scroll position
+      const containerRect = container.getBoundingClientRect();
+      const cardRect = next.getBoundingClientRect();
+      const targetLeft = container.scrollLeft + (cardRect.left - containerRect.left) - (containerRect.width / 2) + (cardRect.width / 2);
+      container.scrollTo({
+        left: targetLeft,
+        behavior: 'smooth'
+      });
     }
   }, 4000);
-  heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval));
-  heroContainer.addEventListener('mousedown', () => clearInterval(autoSlideInterval));
+  heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval), { once: true });
+  heroContainer.addEventListener('mousedown', () => clearInterval(autoSlideInterval), { once: true });
 
   const trending = await fetchTrending();
   const popular = await fetchPopular();

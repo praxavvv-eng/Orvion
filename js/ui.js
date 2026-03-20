@@ -15,7 +15,7 @@ window.createHeroCard = function(movie) {
     <div class="card-year">${year}</div>
     <div class="card-rating">⭐ ${rating}</div>
   `;
-  attachLongPress(card); // add long press to hero cards
+  attachLongPress(card);
   return card;
 };
 
@@ -62,19 +62,35 @@ window.createWatchlistCard = function(item, onRemove) {
   return card;
 };
 
-// ---------- LONG PRESS DETECTION ----------
+// ---------- TOUCH & LONG PRESS DETECTION ----------
 function attachLongPress(card) {
   let pressTimer = null;
   let longPressTriggered = false;
+  let isScrolling = false;
+  let startX, startY;
 
-  const startPress = (e) => {
-    if (e.target.closest('.remove-btn')) return; // ignore remove button
+  // Helper to clear timer and reset state
+  const cancelPress = () => {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
     longPressTriggered = false;
+  };
+
+  const handleTouchStart = (e) => {
+    // Prevent default to avoid image download menu on long press
+    e.preventDefault();
+    const touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    isScrolling = false;
+    longPressTriggered = false;
+
     pressTimer = setTimeout(() => {
       longPressTriggered = true;
-      // Vibrate if supported
       if (navigator.vibrate) navigator.vibrate(30);
-      // Open add modal with item data
+      // Open add modal
       const id = card.dataset.id;
       const type = card.dataset.type;
       const title = card.querySelector('.card-title')?.textContent || card.querySelector('.title')?.textContent || '';
@@ -84,31 +100,109 @@ function attachLongPress(card) {
     }, 500);
   };
 
-  const endPress = (e) => {
-    clearTimeout(pressTimer);
-    // If long press not triggered, treat as tap
-    if (!longPressTriggered && !e.target.closest('.remove-btn')) {
-      // Open details modal
+  const handleTouchMove = (e) => {
+    if (!pressTimer) return;
+    const touch = e.touches[0];
+    const deltaX = Math.abs(touch.clientX - startX);
+    const deltaY = Math.abs(touch.clientY - startY);
+    if (deltaX > 10 || deltaY > 10) {
+      // user is scrolling – cancel press
+      isScrolling = true;
+      cancelPress();
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    e.preventDefault();
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+    if (longPressTriggered) {
+      // already handled
+      longPressTriggered = false;
+      return;
+    }
+    if (!isScrolling) {
+      // treat as tap – open details
       const id = card.dataset.id;
       const type = card.dataset.type;
       if (id && type) {
         showItemDetails(id, type);
       }
     }
+    isScrolling = false;
   };
 
-  // Touch events
-  card.addEventListener('touchstart', startPress, { passive: true });
-  card.addEventListener('touchend', endPress);
-  card.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+  // Mouse events for desktop
+  const handleMouseDown = (e) => {
+    if (e.target.closest('.remove-btn')) return;
+    e.preventDefault(); // prevent image drag
+    startX = e.clientX;
+    startY = e.clientY;
+    isScrolling = false;
+    longPressTriggered = false;
 
-  // Mouse events (for desktop)
-  card.addEventListener('mousedown', startPress);
-  card.addEventListener('mouseup', endPress);
-  card.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+    pressTimer = setTimeout(() => {
+      longPressTriggered = true;
+      if (navigator.vibrate) navigator.vibrate(30);
+      const id = card.dataset.id;
+      const type = card.dataset.type;
+      const title = card.querySelector('.card-title')?.textContent || card.querySelector('.title')?.textContent || '';
+      const poster = card.querySelector('img')?.src || '';
+      const item = { id: Number(id), title, poster };
+      showAddModal(item);
+    }, 500);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!pressTimer) return;
+    const deltaX = Math.abs(e.clientX - startX);
+    const deltaY = Math.abs(e.clientY - startY);
+    if (deltaX > 10 || deltaY > 10) {
+      isScrolling = true;
+      cancelPress();
+    }
+  };
+
+  const handleMouseUp = (e) => {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+    if (longPressTriggered) {
+      longPressTriggered = false;
+      return;
+    }
+    if (!isScrolling) {
+      const id = card.dataset.id;
+      const type = card.dataset.type;
+      if (id && type) {
+        showItemDetails(id, type);
+      }
+    }
+    isScrolling = false;
+  };
+
+  const handleMouseLeave = () => {
+    cancelPress();
+    isScrolling = false;
+  };
+
+  // Attach touch events
+  card.addEventListener('touchstart', handleTouchStart, { passive: false });
+  card.addEventListener('touchmove', handleTouchMove, { passive: false });
+  card.addEventListener('touchend', handleTouchEnd, { passive: false });
+  card.addEventListener('touchcancel', cancelPress);
+
+  // Attach mouse events
+  card.addEventListener('mousedown', handleMouseDown);
+  card.addEventListener('mousemove', handleMouseMove);
+  card.addEventListener('mouseup', handleMouseUp);
+  card.addEventListener('mouseleave', handleMouseLeave);
 }
 
-// ---------- Drag scroll helpers ----------
+// ---------- Drag scroll helpers (unchanged) ----------
 window.enableDragScroll = function(container) {
   let isDown = false, startX, scrollLeft;
   container.addEventListener('mousedown', (e) => {
