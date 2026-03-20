@@ -21,17 +21,17 @@ window.fetchPopular = () => tmdbFetch('/movie/popular');
 window.fetchTopRated = () => tmdbFetch('/movie/top_rated');
 window.fetchNowPlaying = () => tmdbFetch('/movie/now_playing');
 window.fetchTVPopular = () => tmdbFetch('/tv/popular');
-window.searchMovies = (query) => {
+window.searchMovies = (query, page = 1) => {
   if (!query.trim()) return Promise.resolve([]);
-  return tmdbFetch(`/search/movie?query=${encodeURIComponent(query)}`);
+  return tmdbFetch(`/search/movie?query=${encodeURIComponent(query)}&page=${page}`);
 };
-
-// Movie details
 window.fetchMovieDetails = (id) => tmdbFetch(`/movie/${id}?append_to_response=credits,videos`);
-
-// TV details (new)
 window.fetchTVDetails = (id) => tmdbFetch(`/tv/${id}?append_to_response=credits,videos`);
-
-// Discover
 window.fetchDiscoverMovies = (page = 1) => tmdbFetch(`/discover/movie?page=${page}`);
 window.fetchDiscoverTV = (page = 1) => tmdbFetch(`/discover/tv?page=${page}`);
+
+// New multi-search for infinite scroll
+window.fetchSearchMulti = (query, page = 1) => {
+  if (!query.trim()) return Promise.resolve([]);
+  return tmdbFetch(`/search/multi?query=${encodeURIComponent(query)}&page=${page}`);
+};

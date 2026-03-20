@@ -37,13 +37,13 @@ async function loadDiscover(type, page) {
   const grid = document.getElementById('discoverGrid');
   data.forEach(item => {
     if (!item.title && item.name) item.title = item.name;
-    grid.appendChild(createSmallCard(item));
+    const card = createSmallCard(item);
+    grid.appendChild(card);
   });
   currentPage++;
   loading = false;
 }
 
-// Infinite scroll
 window.addEventListener('scroll', () => {
   const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
   if (scrollTop + clientHeight >= scrollHeight - 200) {

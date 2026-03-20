@@ -6,32 +6,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     initHome();
   } else if (document.body.classList.contains('search-page')) {
     initSearch();
+    initSearchHistory();
   } else if (document.body.classList.contains('watchlist-page')) {
     initWatchlistTabs();
     renderWatchlistForStatus('plan');
-  } else if (document.body.classList.contains('discover-page')) {
-    // discover.js handles itself
   }
-
-  // Global click: card click for details
-  document.addEventListener('click', async (e) => {
-    const card = e.target.closest('.card-sm, .hero-card, .watchlist-card');
-    if (card && !e.target.classList.contains('remove-btn')) {
-      const id = card.dataset.id;
-      const type = card.dataset.type; // 'movie' or 'tv'
-      if (id && type) {
-        showItemDetails(id, type);
-      }
-    }
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.custom-dropdown')) {
-      document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
-    }
-  });
+  // No global click handler – now handled by per-card long press in ui.js
 });
 
+// ---------- Custom Dropdowns ----------
 function initCustomDropdowns() {
   document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
     const selected = dropdown.querySelector('.dropdown-selected');
@@ -59,6 +42,7 @@ function initCustomDropdowns() {
   });
 }
 
+// ---------- Modals ----------
 function initModals() {
   document.getElementById('modalCancel')?.addEventListener('click', hideAddModal);
   document.getElementById('modalSave')?.addEventListener('click', () => {
@@ -92,7 +76,7 @@ function initModals() {
   });
 }
 
-// ---------- HOME (unchanged, but uses createSmallCard from ui.js) ----------
+// ---------- HOME ----------
 async function initHome() {
   const heroContainer = document.getElementById('heroCarousel');
   const trendingScroll = document.getElementById('trendingScroll');
@@ -142,35 +126,195 @@ async function initHome() {
   topRated.slice(0, 12).forEach(m => topRatedScroll.appendChild(createSmallCard(m)));
 }
 
-// ---------- SEARCH (unchanged) ----------
-let searchRequestId = 0;
+// ---------- SEARCH (infinite scroll) ----------
+let searchState = {
+  query: '',
+  page: 1,
+  totalPages: 1,
+  loading: false,
+  hasMore: true
+};
+
 function initSearch() {
   const input = document.getElementById('searchInput');
   const grid = document.getElementById('searchResults');
   let timeout;
+
   input.addEventListener('input', (e) => {
     clearTimeout(timeout);
-    const query = e.target.value;
-    const reqId = ++searchRequestId;
+    const query = e.target.value.trim();
     if (query.length < 2) {
       grid.innerHTML = '';
+      searchState.query = '';
       return;
     }
-    grid.innerHTML = '<div class="loading-spinner">Searching...</div>';
+    searchState.query = query;
+    searchState.page = 1;
+    searchState.hasMore = true;
+    grid.innerHTML = '';
+    const loader = document.createElement('div');
+    loader.className = 'loading-spinner';
+    loader.id = 'searchLoader';
+    grid.appendChild(loader);
+
     timeout = setTimeout(async () => {
-      const results = await searchMovies(query);
-      if (reqId !== searchRequestId) return;
-      grid.innerHTML = '';
-      if (results.length === 0) {
-        grid.innerHTML = '<p class="empty-message">No results found</p>';
-      } else {
-        results.forEach(m => grid.appendChild(createSmallCard(m)));
-      }
+      await loadSearchResults(query, 1, true);
     }, 400);
+  });
+
+  window.addEventListener('scroll', () => {
+    if (!searchState.query || searchState.loading || !searchState.hasMore) return;
+    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+    if (scrollTop + clientHeight >= scrollHeight - 200) {
+      loadSearchResults(searchState.query, searchState.page + 1, false);
+    }
   });
 }
 
-// ---------- WATCHLIST (unchanged) ----------
+async function loadSearchResults(query, page, replace = false) {
+  if (searchState.loading) return;
+  searchState.loading = true;
+
+  const grid = document.getElementById('searchResults');
+  const loader = document.getElementById('searchLoader');
+  if (loader) loader.remove();
+
+  const data = await fetchSearchMulti(query, page);
+  if (!data || data.length === 0) {
+    searchState.hasMore = false;
+    searchState.loading = false;
+    if (page === 1) {
+      grid.innerHTML = '<p class="empty-message">No results found</p>';
+    }
+    return;
+  }
+
+  let results = data.filter(item => item.media_type !== 'person' && item.poster_path);
+
+  results.sort((a, b) => {
+    const titleA = (a.title || a.name || '').toLowerCase();
+    const titleB = (b.title || b.name || '').toLowerCase();
+    const q = query.toLowerCase();
+    if (titleA === q && titleB !== q) return -1;
+    if (titleB === q && titleA !== q) return 1;
+    return (b.popularity || 0) - (a.popularity || 0);
+  });
+
+  if (replace) {
+    grid.innerHTML = '';
+  }
+
+  results.forEach(item => {
+    grid.appendChild(createSmallCard(item));
+  });
+
+  searchState.page = page;
+  searchState.loading = false;
+  searchState.hasMore = page < (data.total_pages || 1);
+
+  if (searchState.hasMore) {
+    const newLoader = document.createElement('div');
+    newLoader.className = 'loading-spinner';
+    newLoader.id = 'searchLoader';
+    newLoader.style.display = 'none';
+    grid.appendChild(newLoader);
+  }
+}
+
+// ---------- SEARCH HISTORY ----------
+const HISTORY_KEY = 'searchHistory';
+const MAX_HISTORY = 10;
+
+function initSearchHistory() {
+  const input = document.getElementById('searchInput');
+  const historyContainer = document.getElementById('searchHistory');
+  if (!historyContainer) return;
+
+  function renderHistory() {
+    const history = getSearchHistory();
+    if (history.length === 0) {
+      historyContainer.classList.remove('show');
+      return;
+    }
+    historyContainer.classList.add('show');
+    let html = '<div class="history-header"><span>Recent searches</span><button class="clear-history">Clear all</button></div>';
+    history.forEach(q => {
+      html += `<div class="history-item" data-query="${q}">
+        <span class="query">${q}</span>
+        <button class="delete-item" data-query="${q}">✕</button>
+      </div>`;
+    });
+    historyContainer.innerHTML = html;
+
+    historyContainer.querySelectorAll('.history-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('delete-item')) return;
+        const query = item.dataset.query;
+        input.value = query;
+        historyContainer.classList.remove('show');
+        input.dispatchEvent(new Event('input'));
+      });
+    });
+    historyContainer.querySelectorAll('.delete-item').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const query = btn.dataset.query;
+        removeSearchHistoryItem(query);
+        renderHistory();
+      });
+    });
+    const clearBtn = historyContainer.querySelector('.clear-history');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        clearSearchHistory();
+        renderHistory();
+      });
+    }
+  }
+
+  input.addEventListener('focus', () => {
+    if (getSearchHistory().length > 0) {
+      renderHistory();
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => historyContainer.classList.remove('show'), 200);
+  });
+
+  input.addEventListener('change', () => {
+    const q = input.value.trim();
+    if (q.length >= 2) {
+      addSearchHistory(q);
+    }
+  });
+}
+
+function getSearchHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+  } catch { return []; }
+}
+
+function addSearchHistory(query) {
+  let history = getSearchHistory();
+  history = history.filter(q => q !== query);
+  history.unshift(query);
+  if (history.length > MAX_HISTORY) history.pop();
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function removeSearchHistoryItem(query) {
+  let history = getSearchHistory();
+  history = history.filter(q => q !== query);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function clearSearchHistory() {
+  localStorage.removeItem(HISTORY_KEY);
+}
+
+// ---------- WATCHLIST ----------
 let currentStatus = 'plan';
 function initWatchlistTabs() {
   const tabsContainer = document.querySelector('.watchlist-tabs');
@@ -234,9 +378,8 @@ function renderWatchlistForStatus(status) {
   }, 150);
 }
 
-// ---------- DETAILS (handles both movie and TV) ----------
-let currentItem = null; // renamed from currentMovie
-
+// ---------- DETAILS ----------
+let currentItem = null;
 async function showItemDetails(id, type) {
   let item;
   if (type === 'movie') {
@@ -247,7 +390,6 @@ async function showItemDetails(id, type) {
   if (!item) return;
   currentItem = item;
 
-  // Normalize title and other fields
   const title = item.title || item.name;
   const releaseDate = item.release_date || item.first_air_date;
   const year = releaseDate ? releaseDate.split('-')[0] : 'N/A';

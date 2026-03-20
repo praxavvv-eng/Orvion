@@ -15,6 +15,7 @@ window.createHeroCard = function(movie) {
     <div class="card-year">${year}</div>
     <div class="card-rating">⭐ ${rating}</div>
   `;
+  attachLongPress(card); // add long press to hero cards
   return card;
 };
 
@@ -34,6 +35,7 @@ window.createSmallCard = function(item) {
     </div>
     <div class="title">${title}</div>
   `;
+  attachLongPress(card);
   return card;
 };
 
@@ -56,9 +58,57 @@ window.createWatchlistCard = function(item, onRemove) {
     e.stopPropagation();
     onRemove(item.id, item.category);
   });
+  attachLongPress(card);
   return card;
 };
 
+// ---------- LONG PRESS DETECTION ----------
+function attachLongPress(card) {
+  let pressTimer = null;
+  let longPressTriggered = false;
+
+  const startPress = (e) => {
+    if (e.target.closest('.remove-btn')) return; // ignore remove button
+    longPressTriggered = false;
+    pressTimer = setTimeout(() => {
+      longPressTriggered = true;
+      // Vibrate if supported
+      if (navigator.vibrate) navigator.vibrate(30);
+      // Open add modal with item data
+      const id = card.dataset.id;
+      const type = card.dataset.type;
+      const title = card.querySelector('.card-title')?.textContent || card.querySelector('.title')?.textContent || '';
+      const poster = card.querySelector('img')?.src || '';
+      const item = { id: Number(id), title, poster };
+      showAddModal(item);
+    }, 500);
+  };
+
+  const endPress = (e) => {
+    clearTimeout(pressTimer);
+    // If long press not triggered, treat as tap
+    if (!longPressTriggered && !e.target.closest('.remove-btn')) {
+      // Open details modal
+      const id = card.dataset.id;
+      const type = card.dataset.type;
+      if (id && type) {
+        showItemDetails(id, type);
+      }
+    }
+  };
+
+  // Touch events
+  card.addEventListener('touchstart', startPress, { passive: true });
+  card.addEventListener('touchend', endPress);
+  card.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+
+  // Mouse events (for desktop)
+  card.addEventListener('mousedown', startPress);
+  card.addEventListener('mouseup', endPress);
+  card.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+}
+
+// ---------- Drag scroll helpers ----------
 window.enableDragScroll = function(container) {
   let isDown = false, startX, scrollLeft;
   container.addEventListener('mousedown', (e) => {
