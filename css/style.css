@@ -613,7 +613,7 @@ body.modal-open {
   padding: 24px 20px 28px;
   transition: transform 0.25s ease, opacity 0.2s;
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* allow dropdown to expand outside */
 }
 
 /* Subtle gradient border glow */
@@ -670,7 +670,7 @@ body.modal-open {
 
 /* Input groups */
 #addModal .input-group {
-  margin-bottom: 20px;
+  margin-bottom: 22px; /* increased spacing */
 }
 #addModal .input-group label {
   display: block;
@@ -683,10 +683,18 @@ body.modal-open {
   font-size: 0.7rem;
 }
 
-/* ---------- CUSTOM DROPDOWN (Premium) ---------- */
+/* ---------- CUSTOM DROPDOWN (Premium & fixed) ---------- */
 #addModal .custom-dropdown {
   position: relative;
   cursor: pointer;
+  z-index: auto; /* will be set per dropdown */
+}
+/* assign different z-index to avoid overlap */
+#addModal .category-dropdown {
+  z-index: 5;
+}
+#addModal .status-dropdown {
+  z-index: 4;
 }
 #addModal .dropdown-selected {
   background: rgba(255, 255, 255, 0.04);
@@ -729,7 +737,7 @@ body.modal-open {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   padding: 8px;
-  z-index: 10;
+  z-index: 10; /* high z-index to appear above modal */
   opacity: 0;
   transform: translateY(-10px) scale(0.98);
   pointer-events: none;

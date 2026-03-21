@@ -71,7 +71,6 @@ function attachCardHandlers(card) {
   let startX = 0, startY = 0;
   let isScrolling = false;
 
-  // Clear timer and reset state
   const cancelPress = () => {
     if (pressTimer) {
       clearTimeout(pressTimer);
@@ -80,16 +79,13 @@ function attachCardHandlers(card) {
     longPressTriggered = false;
   };
 
-  // Touch start
   const handleTouchStart = (e) => {
-    // Do NOT prevent default – allow scrolling
     const touch = e.touches[0];
     startX = touch.clientX;
     startY = touch.clientY;
     isScrolling = false;
     longPressTriggered = false;
 
-    // Start long press timer
     pressTimer = setTimeout(() => {
       longPressTriggered = true;
       if (navigator.vibrate) navigator.vibrate(30);
@@ -102,38 +98,30 @@ function attachCardHandlers(card) {
     }, 500);
   };
 
-  // Touch move – detect scrolling
   const handleTouchMove = (e) => {
     if (!pressTimer) return;
     const touch = e.touches[0];
     const deltaX = Math.abs(touch.clientX - startX);
     const deltaY = Math.abs(touch.clientY - startY);
     if (deltaX > 8 || deltaY > 8) {
-      // User is scrolling – cancel long press
       isScrolling = true;
       cancelPress();
     }
   };
 
-  // Touch end – decide tap or nothing
   const handleTouchEnd = (e) => {
     if (pressTimer) {
       clearTimeout(pressTimer);
       pressTimer = null;
     }
-
     if (longPressTriggered) {
-      // Already handled
       longPressTriggered = false;
       return;
     }
-
     if (!isScrolling) {
-      // It was a tap – open details
       const id = card.dataset.id;
       const type = card.dataset.type;
       if (id && type) {
-        // Small delay to avoid conflict with click events
         setTimeout(() => {
           showItemDetails(id, type);
         }, 50);
@@ -142,13 +130,12 @@ function attachCardHandlers(card) {
     isScrolling = false;
   };
 
-  // Touch cancel (e.g., gesture interrupted)
   const handleTouchCancel = () => {
     cancelPress();
     isScrolling = false;
   };
 
-  // Mouse events (desktop) – simplified
+  // Mouse events
   const handleMouseDown = (e) => {
     if (e.target.closest('.remove-btn')) return;
     startX = e.clientX;
@@ -204,20 +191,18 @@ function attachCardHandlers(card) {
     isScrolling = false;
   };
 
-  // Attach touch events with passive: true (allows native scroll)
   card.addEventListener('touchstart', handleTouchStart, { passive: true });
   card.addEventListener('touchmove', handleTouchMove, { passive: true });
   card.addEventListener('touchend', handleTouchEnd, { passive: true });
   card.addEventListener('touchcancel', handleTouchCancel, { passive: true });
 
-  // Mouse events (no passive needed)
   card.addEventListener('mousedown', handleMouseDown);
   card.addEventListener('mousemove', handleMouseMove);
   card.addEventListener('mouseup', handleMouseUp);
   card.addEventListener('mouseleave', handleMouseLeave);
 }
 
-// ---------- Drag scroll helpers (unchanged) ----------
+// ---------- DRAG SCROLL (unchanged) ----------
 window.enableDragScroll = function(container) {
   let isDown = false, startX, scrollLeft;
   container.addEventListener('mousedown', (e) => {
@@ -225,7 +210,7 @@ window.enableDragScroll = function(container) {
     container.style.scrollSnapType = 'none';
     startX = e.pageX - container.offsetLeft;
     scrollLeft = container.scrollLeft;
-    e.preventDefault(); // only here for desktop drag, not touch
+    e.preventDefault();
   });
   container.addEventListener('mouseleave', () => { isDown = false; container.style.scrollSnapType = 'x mandatory'; });
   container.addEventListener('mouseup', () => { isDown = false; container.style.scrollSnapType = 'x mandatory'; });
@@ -263,3 +248,53 @@ window.centerFirstHeroCard = function(container) {
   const gap = parseInt(getComputedStyle(container).gap) || 12;
   container.scrollLeft = (containerWidth / 2) - (cardWidth / 2) - (gap / 2);
 };
+
+// ---------- DROPDOWN LOGIC (Improved) ----------
+function initCustomDropdowns() {
+  document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
+    const selected = dropdown.querySelector('.dropdown-selected');
+    const options = dropdown.querySelectorAll('.dropdown-option');
+
+    // Set initial selected
+    if (!dropdown.querySelector('.dropdown-option.selected')) {
+      const first = options[0];
+      if (first) {
+        first.classList.add('selected');
+        selected.textContent = first.textContent;
+      }
+    }
+
+    // Toggle dropdown and close others
+    selected.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.contains('open');
+      // Close all other dropdowns
+      document.querySelectorAll('.custom-dropdown.open').forEach(d => {
+        if (d !== dropdown) d.classList.remove('open');
+      });
+      if (!isOpen) {
+        dropdown.classList.add('open');
+      } else {
+        dropdown.classList.remove('open');
+      }
+    });
+
+    // Select option
+    options.forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        selected.textContent = opt.textContent;
+        dropdown.classList.remove('open');
+      });
+    });
+  });
+
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-dropdown')) {
+      document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
+    }
+  });
+}
