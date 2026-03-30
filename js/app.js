@@ -10,72 +10,74 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else if (document.body.classList.contains('watchlist-page')) {
     initWatchlistTabs();
     renderWatchlistForStatus('plan');
+    setupWatchlistExpandedView();
   }
 });
 
-// ---------- Custom Dropdowns ----------
-function initCustomDropdowns() {
-  document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
-    const selected = dropdown.querySelector('.dropdown-selected');
-    const options = dropdown.querySelectorAll('.dropdown-option');
-    if (!dropdown.querySelector('.dropdown-option.selected')) {
-      const first = options[0];
-      if (first) {
-        first.classList.add('selected');
-        selected.textContent = first.textContent;
-      }
-    }
-    selected.addEventListener('click', (e) => {
-      e.stopPropagation();
-      dropdown.classList.toggle('open');
-    });
-    options.forEach(opt => {
-      opt.addEventListener('click', (e) => {
-        e.stopPropagation();
-        dropdown.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
-        opt.classList.add('selected');
-        selected.textContent = opt.textContent;
-        dropdown.classList.remove('open');
-      });
-    });
-  });
-}
+// ---------- Custom Dropdowns (defined in ui.js) ----------
 
 // ---------- Modals ----------
 function initModals() {
-  document.getElementById('modalCancel')?.addEventListener('click', hideAddModal);
-  document.getElementById('modalSave')?.addEventListener('click', () => {
-    if (!currentAddItem) return;
-    const category = document.querySelector('#categoryDropdown .dropdown-option.selected')?.dataset.value || 'movie';
-    const status = document.querySelector('#statusDropdown .dropdown-option.selected')?.dataset.value || 'plan';
-    const item = {
-      id: currentAddItem.id,
-      title: currentAddItem.title,
-      poster: currentAddItem.poster,
-      category, status
-    };
-    const added = window.watchlist.add(item);
-    showToast(added ? 'Added to watchlist' : 'Already in watchlist', added ? 'success' : 'error');
-    hideAddModal();
-    if (document.body.classList.contains('watchlist-page')) renderWatchlistForStatus(currentStatus);
-  });
-  document.getElementById('closeDetails')?.addEventListener('click', hideDetailsModal);
-  document.getElementById('detailsModal')?.addEventListener('click', (e) => {
-    if (e.target === document.getElementById('detailsModal')) hideDetailsModal();
-  });
-  document.getElementById('detailsAddBtn')?.addEventListener('click', () => {
-    if (!currentItem) return;
-    currentAddItem = {
-      id: currentItem.id,
-      title: currentItem.title || currentItem.name,
-      poster: currentItem.poster_path ? IMG_BASE + currentItem.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
-    };
-    hideDetailsModal();
-    showAddModal(currentAddItem);
-  });
+  // Add Modal elements
+  const cancelBtn = document.getElementById('modalCancel');
+  const saveBtn = document.getElementById('modalSave');
+  const closeDetailsBtn = document.getElementById('closeDetails');
+  const detailsModal = document.getElementById('detailsModal');
+  const detailsAddBtn = document.getElementById('detailsAddBtn');
+
+  // Cancel button
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', hideAddModal);
+  }
+
+  // Save button
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      if (!currentAddItem) return;
+      const category = document.querySelector('#categoryDropdown .dropdown-option.selected')?.dataset.value || 'movie';
+      const status = document.querySelector('#statusDropdown .dropdown-option.selected')?.dataset.value || 'plan';
+      const item = {
+        id: currentAddItem.id,
+        title: currentAddItem.title,
+        poster: currentAddItem.poster,
+        category,
+        status
+      };
+      const added = window.watchlist.add(item);
+      showToast(added ? 'Added to watchlist' : 'Item updated in watchlist', added ? 'success' : 'info');
+      hideAddModal();
+      if (document.body.classList.contains('watchlist-page')) {
+        renderWatchlistForStatus(currentStatus);
+      }
+    });
+  }
+
+  // Close details modal
+  if (closeDetailsBtn) {
+    closeDetailsBtn.addEventListener('click', hideDetailsModal);
+  }
+  if (detailsModal) {
+    detailsModal.addEventListener('click', (e) => {
+      if (e.target === detailsModal) hideDetailsModal();
+    });
+  }
+
+  // Add to watchlist from details modal
+  if (detailsAddBtn) {
+    detailsAddBtn.addEventListener('click', () => {
+      if (!currentItem) return;
+      currentAddItem = {
+        id: currentItem.id,
+        title: currentItem.title || currentItem.name,
+        poster: currentItem.poster_path ? IMG_BASE + currentItem.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
+      };
+      hideDetailsModal();
+      showAddModal(currentAddItem);
+    });
+  }
 }
 
-// ---------- HOME (unchanged) ----------
+// ---------- HOME ----------
 async function initHome() {
   const heroContainer = document.getElementById('heroCarousel');
   const trendingScroll = document.getElementById('trendingScroll');
@@ -105,7 +107,6 @@ async function initHome() {
   enableDragScroll(heroContainer);
   observeHeroCards(heroContainer);
 
-  // Auto slide using container scroll (fixed)
   let autoSlideInterval = setInterval(() => {
     const container = heroContainer;
     const activeCard = container.querySelector('.hero-card.active');
@@ -115,10 +116,7 @@ async function initHome() {
       const containerRect = container.getBoundingClientRect();
       const cardRect = next.getBoundingClientRect();
       const targetLeft = container.scrollLeft + (cardRect.left - containerRect.left) - (containerRect.width / 2) + (cardRect.width / 2);
-      container.scrollTo({
-        left: targetLeft,
-        behavior: 'smooth'
-      });
+      container.scrollTo({ left: targetLeft, behavior: 'smooth' });
     }
   }, 4000);
   heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval), { once: true });
@@ -154,15 +152,10 @@ function initSearch() {
       searchState.query = '';
       return;
     }
-    // Reset state
     searchState.query = query;
     searchState.page = 1;
-    searchState.totalPages = 1;
     searchState.hasMore = true;
-    searchState.loading = false;
-    grid.innerHTML = ''; // clear old results
-
-    // Show loading at top
+    grid.innerHTML = '';
     const loader = document.createElement('div');
     loader.className = 'loading-spinner';
     loader.id = 'searchLoader';
@@ -173,7 +166,6 @@ function initSearch() {
     }, 400);
   });
 
-  // Infinite scroll listener
   window.addEventListener('scroll', () => {
     if (!searchState.query || searchState.loading || !searchState.hasMore) return;
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
@@ -188,24 +180,10 @@ async function loadSearchResults(query, page, replace = false) {
   searchState.loading = true;
 
   const grid = document.getElementById('searchResults');
-  // Remove any existing loader
   const loader = document.getElementById('searchLoader');
   if (loader) loader.remove();
 
-  // Show a bottom loader if appending
-  if (!replace) {
-    const bottomLoader = document.createElement('div');
-    bottomLoader.className = 'loading-spinner';
-    bottomLoader.id = 'bottomLoader';
-    grid.appendChild(bottomLoader);
-  }
-
   const data = await fetchSearchMulti(query, page);
-  
-  // Remove bottom loader if present
-  const bottomLoader = document.getElementById('bottomLoader');
-  if (bottomLoader) bottomLoader.remove();
-
   if (!data || data.length === 0) {
     searchState.hasMore = false;
     searchState.loading = false;
@@ -215,10 +193,7 @@ async function loadSearchResults(query, page, replace = false) {
     return;
   }
 
-  // Filter out people and items without poster
   let results = data.filter(item => item.media_type !== 'person' && item.poster_path);
-
-  // Sort: exact match first, then by popularity
   results.sort((a, b) => {
     const titleA = (a.title || a.name || '').toLowerCase();
     const titleB = (b.title || b.name || '').toLowerCase();
@@ -228,26 +203,19 @@ async function loadSearchResults(query, page, replace = false) {
     return (b.popularity || 0) - (a.popularity || 0);
   });
 
-  if (replace) {
-    grid.innerHTML = '';
-  }
-
-  results.forEach(item => {
-    grid.appendChild(createSmallCard(item));
-  });
+  if (replace) grid.innerHTML = '';
+  results.forEach(item => grid.appendChild(createSmallCard(item)));
 
   searchState.page = page;
   searchState.loading = false;
-  searchState.totalPages = data.total_pages || 1;
-  searchState.hasMore = page < searchState.totalPages;
+  searchState.hasMore = page < (data.total_pages || 1);
 
-  // Add a hidden loader at bottom for next page
   if (searchState.hasMore) {
-    const nextLoader = document.createElement('div');
-    nextLoader.className = 'loading-spinner';
-    nextLoader.id = 'searchLoader';
-    nextLoader.style.display = 'none';
-    grid.appendChild(nextLoader);
+    const newLoader = document.createElement('div');
+    newLoader.className = 'loading-spinner';
+    newLoader.id = 'searchLoader';
+    newLoader.style.display = 'none';
+    grid.appendChild(newLoader);
   }
 }
 
@@ -303,20 +271,14 @@ function initSearchHistory() {
   }
 
   input.addEventListener('focus', () => {
-    if (getSearchHistory().length > 0) {
-      renderHistory();
-    }
+    if (getSearchHistory().length > 0) renderHistory();
   });
-
   input.addEventListener('blur', () => {
     setTimeout(() => historyContainer.classList.remove('show'), 200);
   });
-
   input.addEventListener('change', () => {
     const q = input.value.trim();
-    if (q.length >= 2) {
-      addSearchHistory(q);
-    }
+    if (q.length >= 2) addSearchHistory(q);
   });
 }
 
@@ -325,7 +287,6 @@ function getSearchHistory() {
     return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
   } catch { return []; }
 }
-
 function addSearchHistory(query) {
   let history = getSearchHistory();
   history = history.filter(q => q !== query);
@@ -333,19 +294,19 @@ function addSearchHistory(query) {
   if (history.length > MAX_HISTORY) history.pop();
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 }
-
 function removeSearchHistoryItem(query) {
   let history = getSearchHistory();
   history = history.filter(q => q !== query);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 }
-
 function clearSearchHistory() {
   localStorage.removeItem(HISTORY_KEY);
 }
 
 // ---------- WATCHLIST ----------
 let currentStatus = 'plan';
+let currentExpandedCategory = null;
+
 function initWatchlistTabs() {
   const tabsContainer = document.querySelector('.watchlist-tabs');
   const tabs = tabsContainer.querySelectorAll('.tab-btn');
@@ -388,15 +349,22 @@ function renderWatchlistForStatus(status) {
       hasAny = true;
       const row = document.createElement('div');
       row.className = 'category-row';
-      row.innerHTML = `<div class="category-title"><h3>${labels[cat]}</h3><span class="category-badge">${items.length}</span></div>`;
+      row.setAttribute('data-category', cat);
+      row.innerHTML = `
+        <div class="category-title">
+          <h3>${labels[cat]}</h3>
+          <span class="category-badge">${items.length}</span>
+        </div>
+      `;
       const scroll = document.createElement('div');
       scroll.className = 'row-scroll';
       items.forEach(item => {
-        scroll.appendChild(createWatchlistCard(item, (id, cat) => {
+        const card = createWatchlistCard(item, (id, cat) => {
           watchlist.remove(id, cat);
           renderWatchlistForStatus(status);
           showToast('Removed from watchlist', 'success');
-        }));
+        });
+        scroll.appendChild(card);
       });
       row.appendChild(scroll);
       container.appendChild(row);
@@ -405,7 +373,63 @@ function renderWatchlistForStatus(status) {
       container.innerHTML = '<div class="empty-watchlist"><svg viewBox="0 0 24 24" stroke="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><p>Start building your watchlist</p></div>';
     }
     container.classList.remove('fade-out');
+    // Attach click listeners for category rows
+    document.querySelectorAll('.category-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.remove-btn')) return;
+        const category = row.getAttribute('data-category');
+        openExpandedView(category);
+      });
+    });
   }, 150);
+}
+
+function setupWatchlistExpandedView() {
+  const backBtn = document.getElementById('expandedBackBtn');
+  backBtn?.addEventListener('click', closeExpandedView);
+}
+
+function openExpandedView(category) {
+  currentExpandedCategory = category;
+  const normalView = document.getElementById('watchlistNormalView');
+  const expandedView = document.getElementById('watchlistExpandedView');
+  const expandedTitle = document.getElementById('expandedTitle');
+  const expandedGrid = document.getElementById('expandedGrid');
+
+  const labels = { movie: 'Movies', series: 'Series', anime: 'Anime', kdrama: 'Kdrama' };
+  expandedTitle.textContent = labels[category] || 'Movies';
+
+  const items = watchlist.getByStatusAndCategory(currentStatus, category);
+  expandedGrid.innerHTML = '';
+  if (items.length === 0) {
+    expandedGrid.innerHTML = '<p class="empty-message">No items in this category</p>';
+  } else {
+    items.forEach(item => {
+      const card = createWatchlistCard(item, (id, cat) => {
+        watchlist.remove(id, cat);
+        // re-render both views
+        renderWatchlistForStatus(currentStatus);
+        if (currentExpandedCategory === cat) {
+          openExpandedView(cat); // refresh expanded view
+        }
+        showToast('Removed from watchlist', 'success');
+      });
+      expandedGrid.appendChild(card);
+    });
+  }
+
+  normalView.style.display = 'none';
+  expandedView.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeExpandedView() {
+  const normalView = document.getElementById('watchlistNormalView');
+  const expandedView = document.getElementById('watchlistExpandedView');
+  normalView.style.display = 'block';
+  expandedView.style.display = 'none';
+  document.body.style.overflow = '';
+  currentExpandedCategory = null;
 }
 
 // ---------- DETAILS ----------
@@ -444,7 +468,8 @@ async function showItemDetails(id, type) {
     genresContainer.appendChild(span);
   });
 
-  document.getElementById('detailsOverview').textContent = item.overview || 'No overview available.';
+  const overviewEl = document.getElementById('detailsOverview');
+  overviewEl.textContent = item.overview || 'No overview available.';
 
   const castContainer = document.getElementById('detailsCast');
   castContainer.innerHTML = '';

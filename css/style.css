@@ -17,7 +17,7 @@ body {
   min-height: 100vh;
 }
 
-/* ---------- BOTTOM NAV (purple active) ---------- */
+/* ---------- BOTTOM NAV ---------- */
 .bottom-nav {
   position: fixed;
   bottom: 16px;
@@ -50,7 +50,7 @@ body {
 }
 
 .nav-item.active {
-  color: #7c3aed; /* purple */
+  color: #7c3aed;
   transform: translateY(-2px) scale(1.05);
   text-shadow: 0 0 8px rgba(124, 58, 237, 0.3);
 }
@@ -119,13 +119,13 @@ h2 {
 .hero-card .poster-container {
   width: 100%;
   height: 100%;
-  pointer-events: auto; /* container handles touches */
+  pointer-events: auto;
 }
 .hero-card img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  pointer-events: none; /* image doesn't block touch */
+  pointer-events: none;
 }
 .hero-card .card-gradient {
   position: absolute;
@@ -360,7 +360,7 @@ h2 {
   padding: 16px;
 }
 
-/* ---------- DISCOVER PAGE (purple tabs) ---------- */
+/* ---------- DISCOVER PAGE ---------- */
 .discover-tabs {
   display: flex;
   background: rgba(30,30,30,0.8);
@@ -412,7 +412,7 @@ h2 {
   width: 100%;
 }
 
-/* ---------- WATCHLIST TABS (purple indicator) ---------- */
+/* ---------- WATCHLIST (normal view) ---------- */
 .watchlist-tabs-container {
   padding: 16px 16px 8px;
 }
@@ -461,6 +461,11 @@ h2 {
 }
 .category-row {
   margin-bottom: 28px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.category-row:hover .category-title h3 {
+  color: #7c3aed;
 }
 .category-title {
   display: flex;
@@ -471,6 +476,7 @@ h2 {
 .category-title h3 {
   font-size: 1.2rem;
   font-weight: 500;
+  transition: color 0.2s;
 }
 .category-badge {
   background: #7c3aed;
@@ -489,101 +495,92 @@ h2 {
 }
 .row-scroll::-webkit-scrollbar { display: none; }
 
-.watchlist-card {
-  flex: 0 0 110px;
-  display: flex;
-  flex-direction: column;
-  cursor: pointer;
-}
-.watchlist-card .poster-container {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 2/3;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #1e1e1e;
-  box-shadow: 0 8px 16px rgba(0,0,0,0.8);
-  pointer-events: auto;
-}
-.watchlist-card .poster-container img {
+/* ---------- WATCHLIST EXPANDED VIEW ---------- */
+#watchlistExpandedView {
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  pointer-events: none;
+  background: #121212;
+  z-index: 150;
+  overflow-y: auto;
+  padding: 20px 16px 100px;
+  animation: fadeIn 0.2s ease;
 }
-.watchlist-card .title {
-  margin-top: 6px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: white;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  pointer-events: none;
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
-.watchlist-card .remove-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
-  border: none;
-  color: white;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  font-size: 12px;
+.expanded-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border-radius: 40px;
+  background: rgba(30,30,30,0.8);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
   z-index: 5;
+}
+.back-btn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 28px;
+  cursor: pointer;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   transition: background 0.2s;
-  pointer-events: auto;
 }
-.watchlist-card .remove-btn:hover {
-  background: rgba(200,50,50,0.9);
+.back-btn:hover {
+  background: rgba(255,255,255,0.1);
 }
-.watchlist-card .category-tag {
-  position: absolute;
-  bottom: 6px;
-  left: 6px;
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-size: 0.55rem;
-  color: #ccc;
-  border: 1px solid rgba(255,255,255,0.1);
-  pointer-events: none;
+.expanded-header h2 {
+  margin: 0;
+  padding: 0;
+  font-size: 1.6rem;
 }
-.empty-watchlist {
-  text-align: center;
-  padding: 60px 20px;
-  color: #888;
+.watchlist-expanded-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  padding: 0 4px;
 }
-.empty-watchlist svg {
-  width: 60px;
-  height: 60px;
-  stroke: #444;
-  margin-bottom: 16px;
+@media (min-width: 600px) {
+  .watchlist-expanded-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (min-width: 900px) {
+  .watchlist-expanded-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+.watchlist-expanded-grid .card-sm {
+  width: 100%;
+  flex: none;
 }
 
-/* ---------- MODALS ---------- */
+/* ---------- MODALS (shared) ---------- */
 body.modal-open {
   overflow: hidden;
 }
 .modal {
   display: none;
   position: fixed;
-  top: 0; left: 0; width: 100%; height: 100%;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
   background: rgba(0,0,0,0.8);
   align-items: center;
   justify-content: center;
   z-index: 200;
   backdrop-filter: blur(8px);
+  pointer-events: auto;
 }
 .modal.show {
   display: flex;
@@ -594,6 +591,9 @@ body.modal-open {
   to { opacity: 1; }
 }
 .modal-content {
+  pointer-events: auto;
+  position: relative;
+  z-index: 1000;
   transform: scale(0.9);
   transition: transform 0.3s;
 }
@@ -601,53 +601,25 @@ body.modal-open {
   transform: scale(1);
 }
 
-/* ========== ADD MODAL (Glassmorphism Premium) ========== */
+/* Add modal */
 #addModal .modal-content.add-modal-content {
   background: rgba(20, 20, 20, 0.65);
   backdrop-filter: blur(25px);
-  -webkit-backdrop-filter: blur(25px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 32px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   width: 320px;
+  max-width: 90%;
   padding: 24px 20px 28px;
-  transition: transform 0.25s ease, opacity 0.2s;
   position: relative;
-  overflow: visible; /* allow dropdown to expand outside */
+  overflow: visible;
+  margin: 0 auto;
 }
-
-/* Subtle gradient border glow */
-#addModal .modal-content.add-modal-content::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 32px;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.3), rgba(168, 85, 247, 0.1));
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
-/* Modal open animation */
-.modal.show .modal-content {
-  transform: scale(1);
-  animation: modalPop 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
-}
-@keyframes modalPop {
-  from {
-    transform: scale(0.96);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
+@media (min-width: 768px) {
+  #addModal .modal-content.add-modal-content {
+    width: 400px;
+    padding: 28px 24px 32px;
   }
 }
-
-/* Modal header */
 #addModal .modal-header {
   text-align: center;
   margin-bottom: 24px;
@@ -665,36 +637,22 @@ body.modal-open {
 #addModal .modal-header .modal-subtitle {
   color: rgba(255, 255, 255, 0.6);
   font-size: 0.85rem;
-  letter-spacing: 0.2px;
 }
-
-/* Input groups */
 #addModal .input-group {
-  margin-bottom: 22px; /* increased spacing */
+  margin-bottom: 22px;
 }
 #addModal .input-group label {
   display: block;
   margin-bottom: 8px;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.7);
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  font-size: 0.7rem;
 }
-
-/* ---------- CUSTOM DROPDOWN (Premium & fixed) ---------- */
 #addModal .custom-dropdown {
   position: relative;
   cursor: pointer;
-  z-index: auto; /* will be set per dropdown */
-}
-/* assign different z-index to avoid overlap */
-#addModal .category-dropdown {
-  z-index: 5;
-}
-#addModal .status-dropdown {
-  z-index: 4;
 }
 #addModal .dropdown-selected {
   background: rgba(255, 255, 255, 0.04);
@@ -724,8 +682,6 @@ body.modal-open {
 #addModal .custom-dropdown.open .dropdown-selected::after {
   transform: rotate(180deg);
 }
-
-/* Dropdown options container */
 #addModal .dropdown-options {
   position: absolute;
   top: calc(100% + 8px);
@@ -733,11 +689,10 @@ body.modal-open {
   right: 0;
   background: rgba(20, 20, 20, 0.92);
   backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   padding: 8px;
-  z-index: 10; /* high z-index to appear above modal */
+  z-index: 10;
   opacity: 0;
   transform: translateY(-10px) scale(0.98);
   pointer-events: none;
@@ -749,8 +704,6 @@ body.modal-open {
   transform: translateY(0) scale(1);
   pointer-events: auto;
 }
-
-/* Option items */
 #addModal .dropdown-option {
   padding: 14px 16px;
   border-radius: 14px;
@@ -763,15 +716,14 @@ body.modal-open {
   justify-content: space-between;
 }
 #addModal .dropdown-option:hover {
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.25), rgba(168, 85, 247, 0.15));
+  background: linear-gradient(135deg, rgba(124,58,237,0.25), rgba(168,85,247,0.15));
   color: white;
   transform: scale(1.02);
 }
 #addModal .dropdown-option.selected {
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.3), rgba(168, 85, 247, 0.2));
-  color: white;
+  background: linear-gradient(135deg, rgba(124,58,237,0.35), rgba(168,85,247,0.25)) !important;
+  transform: scale(1.02);
   font-weight: 600;
-  position: relative;
 }
 #addModal .dropdown-option.selected::after {
   content: '✓';
@@ -780,8 +732,6 @@ body.modal-open {
   color: #a855f7;
   margin-left: 8px;
 }
-
-/* ---------- MODAL BUTTONS ---------- */
 #addModal .modal-actions {
   display: flex;
   gap: 12px;
@@ -800,7 +750,6 @@ body.modal-open {
 #addModal .btn:active {
   transform: scale(0.96);
 }
-/* Cancel button (glass) */
 #addModal .btn.glass-btn {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
@@ -809,9 +758,7 @@ body.modal-open {
 }
 #addModal .btn.glass-btn:hover {
   background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
 }
-/* Save button (gradient + glow) */
 #addModal .btn.accent-btn {
   background: linear-gradient(135deg, #7c3aed, #a855f7);
   color: white;
@@ -822,26 +769,8 @@ body.modal-open {
   box-shadow: 0 12px 25px rgba(124, 58, 237, 0.5);
   transform: translateY(-1px);
 }
-#addModal .btn.accent-btn:active {
-  transform: scale(0.96);
-}
 
-/* Small screen adjustments */
-@media (max-width: 480px) {
-  #addModal .modal-content.add-modal-content {
-    width: 90%;
-    max-width: 300px;
-    padding: 20px 16px 24px;
-  }
-  #addModal .dropdown-selected {
-    padding: 14px 16px;
-  }
-  #addModal .dropdown-option {
-    padding: 12px 14px;
-  }
-}
-
-/* ---------- DETAILS MODAL (centered, scrollbar hidden) ---------- */
+/* ---------- DETAILS MODAL (scrollbar hidden) ---------- */
 .details-modal {
   width: 90%;
   max-width: 500px;
@@ -950,25 +879,18 @@ body.modal-open {
   font-size: 0.8rem;
   border: 1px solid rgba(255,255,255,0.1);
 }
-.details-info p {
+.details-description {
   line-height: 1.6;
   color: #ddd;
   margin-bottom: 20px;
   max-height: 200px;
   overflow-y: auto;
   padding-right: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: #7c3aed #333;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE */
 }
-.details-info p::-webkit-scrollbar {
-  width: 4px;
-}
-.details-info p::-webkit-scrollbar-track {
-  background: #333;
-}
-.details-info p::-webkit-scrollbar-thumb {
-  background: #7c3aed;
-  border-radius: 10px;
+.details-description::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 .details-cast {
   display: flex;
@@ -976,11 +898,11 @@ body.modal-open {
   overflow-x: auto;
   padding-bottom: 8px;
   margin-bottom: 16px;
-  scrollbar-width: none; /* Firefox hide */
-  -ms-overflow-style: none; /* IE hide */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .details-cast::-webkit-scrollbar {
-  display: none; /* Chrome/Safari hide */
+  display: none;
 }
 .cast-item {
   flex: 0 0 80px;
@@ -1040,6 +962,17 @@ body.modal-open {
 .trailer-btn:hover {
   background: rgba(255,255,255,0.1);
   transform: translateY(-2px);
+}
+@media (min-width: 700px) {
+  .details-content {
+    flex-direction: row;
+  }
+  .details-poster {
+    max-width: 250px;
+  }
+  .details-backdrop {
+    height: 100%;
+  }
 }
 
 /* ---------- TOAST ---------- */
@@ -1115,12 +1048,4 @@ img {
 .watchlist-card:active {
   transform: scale(0.98);
   transition: transform 0.1s;
-}
-
-/* Ensure loading spinner for infinite scroll is visible */
-.loading-spinner {
-  text-align: center;
-  padding: 20px;
-  color: #aaa;
-  grid-column: 1 / -1;
 }

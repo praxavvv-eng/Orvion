@@ -3,36 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Orvion · Home</title>
+  <title>Orvion · home</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="home-page">
   <main>
-    <!-- Hero carousel -->
     <section class="hero">
       <div class="hero-carousel" id="heroCarousel"></div>
     </section>
 
-    <!-- Trending row -->
     <section class="trending">
       <h2>Trending</h2>
       <div class="horizontal-scroll" id="trendingScroll"></div>
     </section>
 
-    <!-- Popular row -->
     <section class="popular">
       <h2>Popular</h2>
       <div class="horizontal-scroll" id="popularScroll"></div>
     </section>
 
-    <!-- Top Rated row -->
     <section class="top-rated">
       <h2>Top Rated</h2>
       <div class="horizontal-scroll" id="topRatedScroll"></div>
     </section>
   </main>
 
-  <!-- Bottom navigation -->
   <nav class="bottom-nav">
     <a href="index.html" class="nav-item active">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10l9-7 9 7v11h-6v-7h-6v7H3z"/></svg>
@@ -52,7 +47,6 @@
     </a>
   </nav>
 
-  <!-- Add to watchlist modal (fixed dropdown) -->
   <div class="modal" id="addModal">
     <div class="modal-content add-modal-content glass">
       <div class="modal-header">
@@ -60,7 +54,6 @@
         <p class="modal-subtitle">Choose category and status</p>
       </div>
       <div class="modal-body">
-        <!-- Category dropdown -->
         <div class="input-group">
           <label>Category</label>
           <div class="custom-dropdown" id="categoryDropdown">
@@ -73,7 +66,6 @@
             </div>
           </div>
         </div>
-        <!-- Status dropdown -->
         <div class="input-group">
           <label>Status</label>
           <div class="custom-dropdown" id="statusDropdown">
@@ -87,13 +79,12 @@
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-secondary glass-btn" id="modalCancel">Cancel</button>
-        <button class="btn btn-primary accent-btn" id="modalSave">Save</button>
+        <button class="btn glass-btn" id="modalCancel">Cancel</button>
+        <button class="btn accent-btn" id="modalSave">Save</button>
       </div>
     </div>
   </div>
 
-  <!-- Details modal (unchanged) -->
   <div class="modal" id="detailsModal">
     <div class="modal-content details-modal glass">
       <button class="close-btn" id="closeDetails">&times;</button>
@@ -110,7 +101,7 @@
             <span id="detailsRuntime"></span>
           </div>
           <div class="details-genres" id="detailsGenres"></div>
-          <p id="detailsOverview"></p>
+          <div class="details-description" id="detailsOverview"></div>
           <div class="details-cast" id="detailsCast"></div>
           <div class="details-actions">
             <button class="btn details-add-btn accent-btn" id="detailsAddBtn">Add to watchlist</button>

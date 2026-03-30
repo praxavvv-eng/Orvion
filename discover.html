@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Orvion · Discover</title>
+  <title>Orvion · discover</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="discover-page">
@@ -35,7 +35,7 @@
     </a>
   </nav>
 
-  <!-- Add modal (same) -->
+  <!-- Modals (same) -->
   <div class="modal" id="addModal">
     <div class="modal-content add-modal-content glass">
       <div class="modal-header">
@@ -68,13 +68,12 @@
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-secondary glass-btn" id="modalCancel">Cancel</button>
-        <button class="btn btn-primary accent-btn" id="modalSave">Save</button>
+        <button class="btn glass-btn" id="modalCancel">Cancel</button>
+        <button class="btn accent-btn" id="modalSave">Save</button>
       </div>
     </div>
   </div>
 
-  <!-- Details modal (same) -->
   <div class="modal" id="detailsModal">
     <div class="modal-content details-modal glass">
       <button class="close-btn" id="closeDetails">&times;</button>
@@ -91,7 +90,7 @@
             <span id="detailsRuntime"></span>
           </div>
           <div class="details-genres" id="detailsGenres"></div>
-          <p id="detailsOverview"></p>
+          <div class="details-description" id="detailsOverview"></div>
           <div class="details-cast" id="detailsCast"></div>
           <div class="details-actions">
             <button class="btn details-add-btn accent-btn" id="detailsAddBtn">Add to watchlist</button>
@@ -105,7 +104,7 @@
   <script src="js/api.js"></script>
   <script src="js/watchlist.js"></script>
   <script src="js/ui.js"></script>
-  <script src="js/app.js"></script>  <!-- added to enable modal functions -->
+  <script src="js/app.js"></script>
   <script src="js/discover.js"></script>
 </body>
 </html>
