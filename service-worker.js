@@ -1,6 +1,5 @@
-const CACHE_NAME = 'orvion-v2';
-const OFFLINE_URL = '/offline.html';
-
+// service-worker.js
+const CACHE_NAME = 'orvion-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -18,6 +17,7 @@ const STATIC_ASSETS = [
   '/icons/icon-512.png'
 ];
 
+// Install event – cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -27,6 +27,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// Activate event – clean old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -42,9 +43,17 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Fetch event – only handle http/https requests, ignore chrome-extension and other schemes
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+  const requestScheme = event.request.url.split(':')[0];
 
+  // Ignore unsupported schemes (chrome-extension, moz-extension, etc.)
+  if (requestScheme !== 'http' && requestScheme !== 'https') {
+    return;
+  }
+
+  // TMDB API – network first
   if (url.hostname === 'api.themoviedb.org') {
     event.respondWith(
       fetch(event.request)
@@ -58,6 +67,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Images – cache first
   if (url.hostname === 'image.tmdb.org') {
     event.respondWith(
       caches.match(event.request).then((cached) => cached || fetch(event.request))
@@ -65,6 +75,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // All other requests (HTML, CSS, JS) – cache first
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
@@ -75,10 +86,6 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       });
-    }).catch(() => {
-      if (event.request.headers.get('accept').includes('text/html')) {
-        return caches.match(OFFLINE_URL);
-      }
     })
   );
 });

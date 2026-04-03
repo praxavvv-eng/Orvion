@@ -1,7 +1,8 @@
-// manifest.json (place in root)
+// manifest.json
 {
   "name": "Orvion",
   "short_name": "Orvion",
+  "description": "Discover and track your favorite movies & TV shows",
   "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",
