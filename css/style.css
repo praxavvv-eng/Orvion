@@ -11,13 +11,13 @@
 }
 
 body {
-  background-color: #121212;
+  background-color: #0a0a0a;
   color: #ffffff;
   padding-bottom: 100px;
   min-height: 100vh;
 }
 
-/* ---------- BOTTOM NAV ---------- */
+/* ---------- FLOATING BOTTOM NAV ---------- */
 .bottom-nav {
   position: fixed;
   bottom: 16px;
@@ -179,18 +179,7 @@ h2 {
   pointer-events: none;
 }
 
-/* ---------- HORIZONTAL SCROLL ROWS ---------- */
-.horizontal-scroll {
-  display: flex;
-  overflow-x: auto;
-  gap: 16px;
-  padding: 8px 16px 20px;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.horizontal-scroll::-webkit-scrollbar { display: none; }
-
+/* ---------- MOVIE CARD (global) ---------- */
 .card-sm {
   flex: 0 0 130px;
   scroll-snap-align: start;
@@ -258,6 +247,18 @@ h2 {
   padding: 0 2px;
   pointer-events: none;
 }
+
+/* Horizontal scroll rows */
+.horizontal-scroll {
+  display: flex;
+  overflow-x: auto;
+  gap: 16px;
+  padding: 8px 16px 20px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.horizontal-scroll::-webkit-scrollbar { display: none; }
 
 /* ---------- SEARCH PAGE ---------- */
 .search-header {
@@ -412,7 +413,7 @@ h2 {
   width: 100%;
 }
 
-/* ---------- WATCHLIST (normal view) ---------- */
+/* ---------- WATCHLIST (normal) ---------- */
 .watchlist-tabs-container {
   padding: 16px 16px 8px;
 }
@@ -502,7 +503,7 @@ h2 {
   left: 0;
   width: 100%;
   height: 100%;
-  background: #121212;
+  background: #0a0a0a;
   z-index: 150;
   overflow-y: auto;
   padding: 20px 16px 100px;
@@ -579,7 +580,7 @@ h2 {
   flex: none;
 }
 
-/* ---------- EMPTY STATE (polished) ---------- */
+/* ---------- EMPTY WATCHLIST STATE ---------- */
 .empty-watchlist {
   text-align: center;
   padding: 60px 20px;
@@ -803,7 +804,7 @@ body.modal-open {
   transform: translateY(-1px);
 }
 
-/* ---------- DETAILS MODAL (scrollbar hidden) ---------- */
+/* ---------- DETAILS MODAL (hidden scrollbar) ---------- */
 .details-modal {
   width: 90%;
   max-width: 500px;
@@ -862,11 +863,11 @@ body.modal-open {
   padding: 24px;
   overflow-y: auto;
   max-height: calc(85vh - 48px);
-  scrollbar-width: none; /* Firefox hide */
-  -ms-overflow-style: none; /* IE hide */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE */
 }
 .details-content::-webkit-scrollbar {
-  display: none; /* Chrome/Safari hide */
+  display: none; /* Chrome/Safari */
 }
 .details-poster {
   flex-shrink: 0;
@@ -919,11 +920,11 @@ body.modal-open {
   max-height: 200px;
   overflow-y: auto;
   padding-right: 8px;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .details-description::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+  display: none;
 }
 .details-cast {
   display: flex;
@@ -1055,7 +1056,7 @@ body.modal-open {
   to { transform: rotate(360deg); }
 }
 
-/* ---------- EMPTY MESSAGE (fallback) ---------- */
+/* ---------- EMPTY MESSAGE ---------- */
 .empty-message {
   text-align: center;
   padding: 40px 20px;

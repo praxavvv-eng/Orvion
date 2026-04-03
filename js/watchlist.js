@@ -1,85 +1,117 @@
-const STORAGE_KEY = 'orvion_watchlist';
+// js/watchlist.js - Complete, production-ready with Date.now() and robust queries
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
-// Get watchlist from localStorage
-function getWatchlist() {
+const COLLECTION_NAME = "watchlist";
+
+function getCollection() {
+  if (!window.db) throw new Error("Firestore not initialized");
+  return collection(window.db, COLLECTION_NAME);
+}
+
+export async function addToWatchlist(item) {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-  } catch (e) {
-    console.warn('Failed to parse watchlist', e);
-    return [];
+    const col = getCollection();
+    const docRef = await addDoc(col, {
+      id: item.id,
+      title: item.title,
+      poster: item.poster,
+      category: item.category,
+      status: item.status,
+      added: Date.now()
+    });
+    console.log("Added:", docRef.id);
+    return { success: true, docId: docRef.id };
+  } catch (error) {
+    console.error("Add error:", error);
+    return { success: false, error };
   }
 }
 
-// Save watchlist, removing duplicates by ID (keep latest)
-function saveWatchlist(list) {
-  const unique = list.reduce((acc, current) => {
-    const existing = acc.find(item => item.id === current.id);
-    if (!existing) {
-      acc.push(current);
-    } else {
-      // replace with newer (or merge)
-      Object.assign(existing, current);
-    }
-    return acc;
-  }, []);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(unique));
-}
-
-// Add or update an item – moves between categories (no duplicates)
-function addToWatchlist(item) {
-  let list = getWatchlist();
-  const existingIndex = list.findIndex(existing => existing.id === item.id);
-
-  if (existingIndex !== -1) {
-    // Update existing item (category, status, poster, title)
-    list[existingIndex] = {
-      ...list[existingIndex],
-      ...item,
-      added: Date.now() // refresh timestamp
-    };
-  } else {
-    // Add new item
-    list.push({ ...item, added: Date.now() });
+export async function removeFromWatchlist(docId) {
+  try {
+    const docRef = doc(window.db, COLLECTION_NAME, docId);
+    await deleteDoc(docRef);
+    console.log("Deleted:", docId);
+    return { success: true };
+  } catch (error) {
+    console.error("Delete error:", error);
+    return { success: false, error };
   }
-  saveWatchlist(list);
-  return true;
 }
 
-// Update an item by ID (partial update)
-function updateWatchlistItem(id, updates) {
-  let list = getWatchlist();
-  const index = list.findIndex(item => item.id === id);
-  if (index !== -1) {
-    list[index] = { ...list[index], ...updates };
-    saveWatchlist(list);
-    return true;
+export async function updateWatchlistItem(docId, updates) {
+  try {
+    const docRef = doc(window.db, COLLECTION_NAME, docId);
+    await updateDoc(docRef, updates);
+    console.log("Updated:", docId);
+    return { success: true };
+  } catch (error) {
+    console.error("Update error:", error);
+    return { success: false, error };
   }
-  return false;
 }
 
-// Remove item by ID and optionally category (if category provided, remove exact match)
-function removeFromWatchlist(id, category = null) {
-  let list = getWatchlist();
-  if (category) {
-    list = list.filter(item => !(item.id === id && item.category === category));
-  } else {
-    list = list.filter(item => item.id !== id);
+export async function getAllWatchlist() {
+  try {
+    const col = getCollection();
+    const snapshot = await getDocs(col);
+    const items = snapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+    return { success: true, items };
+  } catch (error) {
+    console.error("Get all error:", error);
+    return { success: false, items: [] };
   }
-  saveWatchlist(list);
-  return true;
 }
 
-// Get items filtered by status and category, sorted by newest first
-function getItemsByStatusAndCategory(status, category) {
-  return getWatchlist()
-    .filter(item => item.status === status && item.category === category)
-    .sort((a, b) => b.added - a.added);
+export async function getItemsByStatusAndCategory(status, category) {
+  try {
+    const col = getCollection();
+    const q = query(
+      col,
+      where("status", "==", status),
+      where("category", "==", category),
+      orderBy("added", "desc")
+    );
+    const snapshot = await getDocs(q);
+    const items = snapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+    console.log(`Fetched ${items.length} for ${status}/${category}`);
+    return { success: true, items };
+  } catch (error) {
+    console.error("Query error:", error);
+    return { success: false, items: [] };
+  }
+}
+
+export function subscribeWatchlist(callback) {
+  try {
+    const col = getCollection();
+    const q = query(col, orderBy("added", "desc"));
+    return onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+      callback(items);
+    }, (error) => console.error("Snapshot error:", error));
+  } catch (error) {
+    console.error("Subscribe error:", error);
+    return () => {};
+  }
 }
 
 window.watchlist = {
-  getAll: getWatchlist,
   add: addToWatchlist,
-  update: updateWatchlistItem,
   remove: removeFromWatchlist,
-  getByStatusAndCategory: getItemsByStatusAndCategory
+  update: updateWatchlistItem,
+  getAll: getAllWatchlist,
+  getByStatusAndCategory: getItemsByStatusAndCategory,
+  subscribe: subscribeWatchlist
 };

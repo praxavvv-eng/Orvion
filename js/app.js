@@ -1,5 +1,10 @@
+// js/app.js - Complete with fixed watchlist rendering (loader removed)
+// IMPORTANT: Run with Live Server or localhost (http://). Do NOT open file:// directly.
+
+import { addToWatchlist, removeFromWatchlist, updateWatchlistItem, getItemsByStatusAndCategory, subscribeWatchlist } from './watchlist.js';
+
 document.addEventListener('DOMContentLoaded', async () => {
-  initCustomDropdowns();
+  if (typeof initCustomDropdowns === 'function') initCustomDropdowns();
   initModals();
 
   if (document.body.classList.contains('home-page')) {
@@ -9,75 +14,80 @@ document.addEventListener('DOMContentLoaded', async () => {
     initSearchHistory();
   } else if (document.body.classList.contains('watchlist-page')) {
     initWatchlistTabs();
-    renderWatchlistForStatus('plan');
+    await renderWatchlist();
     setupWatchlistExpandedView();
   }
 });
 
-// ---------- Custom Dropdowns (defined in ui.js) ----------
-
-// ---------- Modals ----------
+// ---------- Modal Initialization ----------
 function initModals() {
-  // Add Modal elements
   const cancelBtn = document.getElementById('modalCancel');
   const saveBtn = document.getElementById('modalSave');
   const closeDetailsBtn = document.getElementById('closeDetails');
   const detailsModal = document.getElementById('detailsModal');
   const detailsAddBtn = document.getElementById('detailsAddBtn');
 
-  // Cancel button
   if (cancelBtn) {
+    cancelBtn.removeEventListener('click', hideAddModal);
     cancelBtn.addEventListener('click', hideAddModal);
   }
 
-  // Save button
   if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
-      if (!currentAddItem) return;
+    const newSaveBtn = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+    const freshSaveBtn = document.getElementById('modalSave');
+    freshSaveBtn.addEventListener('click', async () => {
+      if (!window.currentAddItem) return;
       const category = document.querySelector('#categoryDropdown .dropdown-option.selected')?.dataset.value || 'movie';
       const status = document.querySelector('#statusDropdown .dropdown-option.selected')?.dataset.value || 'plan';
       const item = {
-        id: currentAddItem.id,
-        title: currentAddItem.title,
-        poster: currentAddItem.poster,
+        id: window.currentAddItem.id,
+        title: window.currentAddItem.title,
+        poster: window.currentAddItem.poster,
         category,
         status
       };
-      const added = window.watchlist.add(item);
-      showToast(added ? 'Added to watchlist' : 'Item updated in watchlist', added ? 'success' : 'info');
-      hideAddModal();
-      if (document.body.classList.contains('watchlist-page')) {
-        renderWatchlistForStatus(currentStatus);
+      const result = await addToWatchlist(item);
+      if (result.success) {
+        showToast('Added to watchlist', 'success');
+        if (document.body.classList.contains('watchlist-page')) {
+          await renderWatchlist();
+        }
+      } else {
+        showToast('Error adding item', 'error');
       }
+      hideAddModal();
     });
   }
 
-  // Close details modal
   if (closeDetailsBtn) {
+    closeDetailsBtn.removeEventListener('click', hideDetailsModal);
     closeDetailsBtn.addEventListener('click', hideDetailsModal);
   }
   if (detailsModal) {
+    detailsModal.removeEventListener('click', hideDetailsModal);
     detailsModal.addEventListener('click', (e) => {
       if (e.target === detailsModal) hideDetailsModal();
     });
   }
-
-  // Add to watchlist from details modal
   if (detailsAddBtn) {
-    detailsAddBtn.addEventListener('click', () => {
-      if (!currentItem) return;
-      currentAddItem = {
-        id: currentItem.id,
-        title: currentItem.title || currentItem.name,
-        poster: currentItem.poster_path ? IMG_BASE + currentItem.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
-      };
-      hideDetailsModal();
-      showAddModal(currentAddItem);
-    });
+    detailsAddBtn.removeEventListener('click', detailsAddHandler);
+    detailsAddBtn.addEventListener('click', detailsAddHandler);
   }
 }
 
-// ---------- HOME ----------
+function detailsAddHandler() {
+  if (!window.currentItem) return;
+  window.currentAddItem = {
+    id: window.currentItem.id,
+    title: window.currentItem.title || window.currentItem.name,
+    poster: window.currentItem.poster_path ? IMG_BASE + window.currentItem.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
+  };
+  hideDetailsModal();
+  showAddModal(window.currentAddItem);
+}
+
+// ---------- Home Page ----------
 async function initHome() {
   const heroContainer = document.getElementById('heroCarousel');
   const trendingScroll = document.getElementById('trendingScroll');
@@ -91,7 +101,7 @@ async function initHome() {
     heroMovies = JSON.parse(localStorage.getItem('heroMovies') || '[]');
   } else {
     const [trending, popular, topRated] = await Promise.all([
-      fetchTrending(), fetchPopular(), fetchTopRated()
+      window.fetchTrending(), window.fetchPopular(), window.fetchTopRated()
     ]);
     heroMovies = [...trending, ...popular, ...topRated]
       .sort(() => 0.5 - Math.random())
@@ -100,12 +110,12 @@ async function initHome() {
     localStorage.setItem('heroLastUpdate', today);
   }
 
-  heroMovies.forEach(movie => heroContainer.appendChild(createHeroCard(movie)));
-  setTimeout(() => centerFirstHeroCard(heroContainer), 50);
+  heroMovies.forEach(movie => heroContainer.appendChild(window.createHeroCard(movie)));
+  setTimeout(() => window.centerFirstHeroCard(heroContainer), 50);
   const firstCard = heroContainer.querySelector('.hero-card');
   if (firstCard) firstCard.classList.add('active');
-  enableDragScroll(heroContainer);
-  observeHeroCards(heroContainer);
+  window.enableDragScroll(heroContainer);
+  window.observeHeroCards(heroContainer);
 
   let autoSlideInterval = setInterval(() => {
     const container = heroContainer;
@@ -122,28 +132,21 @@ async function initHome() {
   heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval), { once: true });
   heroContainer.addEventListener('mousedown', () => clearInterval(autoSlideInterval), { once: true });
 
-  const trending = await fetchTrending();
-  const popular = await fetchPopular();
-  const topRated = await fetchTopRated();
-  trending.slice(0, 12).forEach(m => trendingScroll.appendChild(createSmallCard(m)));
-  popular.slice(0, 12).forEach(m => popularScroll.appendChild(createSmallCard(m)));
-  topRated.slice(0, 12).forEach(m => topRatedScroll.appendChild(createSmallCard(m)));
+  const trending = await window.fetchTrending();
+  const popular = await window.fetchPopular();
+  const topRated = await window.fetchTopRated();
+  trending.slice(0, 12).forEach(m => trendingScroll.appendChild(window.createSmallCard(m)));
+  popular.slice(0, 12).forEach(m => popularScroll.appendChild(window.createSmallCard(m)));
+  topRated.slice(0, 12).forEach(m => topRatedScroll.appendChild(window.createSmallCard(m)));
 }
 
-// ---------- SEARCH (infinite scroll) ----------
-let searchState = {
-  query: '',
-  page: 1,
-  totalPages: 1,
-  loading: false,
-  hasMore: true
-};
+// ---------- Search Page ----------
+let searchState = { query: '', page: 1, totalPages: 1, loading: false, hasMore: true };
 
 function initSearch() {
   const input = document.getElementById('searchInput');
   const grid = document.getElementById('searchResults');
   let timeout;
-
   input.addEventListener('input', (e) => {
     clearTimeout(timeout);
     const query = e.target.value.trim();
@@ -160,12 +163,10 @@ function initSearch() {
     loader.className = 'loading-spinner';
     loader.id = 'searchLoader';
     grid.appendChild(loader);
-
     timeout = setTimeout(async () => {
       await loadSearchResults(query, 1, true);
     }, 400);
   });
-
   window.addEventListener('scroll', () => {
     if (!searchState.query || searchState.loading || !searchState.hasMore) return;
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
@@ -178,21 +179,16 @@ function initSearch() {
 async function loadSearchResults(query, page, replace = false) {
   if (searchState.loading) return;
   searchState.loading = true;
-
   const grid = document.getElementById('searchResults');
   const loader = document.getElementById('searchLoader');
   if (loader) loader.remove();
-
-  const data = await fetchSearchMulti(query, page);
+  const data = await window.searchMovies(query, page);
   if (!data || data.length === 0) {
     searchState.hasMore = false;
     searchState.loading = false;
-    if (page === 1) {
-      grid.innerHTML = '<p class="empty-message">No results found</p>';
-    }
+    if (page === 1) grid.innerHTML = '<p class="empty-message">No results found</p>';
     return;
   }
-
   let results = data.filter(item => item.media_type !== 'person' && item.poster_path);
   results.sort((a, b) => {
     const titleA = (a.title || a.name || '').toLowerCase();
@@ -202,14 +198,11 @@ async function loadSearchResults(query, page, replace = false) {
     if (titleB === q && titleA !== q) return 1;
     return (b.popularity || 0) - (a.popularity || 0);
   });
-
   if (replace) grid.innerHTML = '';
-  results.forEach(item => grid.appendChild(createSmallCard(item)));
-
+  results.forEach(item => grid.appendChild(window.createSmallCard(item)));
   searchState.page = page;
   searchState.loading = false;
   searchState.hasMore = page < (data.total_pages || 1);
-
   if (searchState.hasMore) {
     const newLoader = document.createElement('div');
     newLoader.className = 'loading-spinner';
@@ -219,7 +212,7 @@ async function loadSearchResults(query, page, replace = false) {
   }
 }
 
-// ---------- SEARCH HISTORY ----------
+// ---------- Search History ----------
 const HISTORY_KEY = 'searchHistory';
 const MAX_HISTORY = 10;
 
@@ -227,7 +220,6 @@ function initSearchHistory() {
   const input = document.getElementById('searchInput');
   const historyContainer = document.getElementById('searchHistory');
   if (!historyContainer) return;
-
   function renderHistory() {
     const history = getSearchHistory();
     if (history.length === 0) {
@@ -237,13 +229,9 @@ function initSearchHistory() {
     historyContainer.classList.add('show');
     let html = '<div class="history-header"><span>Recent searches</span><button class="clear-history">Clear all</button></div>';
     history.forEach(q => {
-      html += `<div class="history-item" data-query="${q}">
-        <span class="query">${q}</span>
-        <button class="delete-item" data-query="${q}">✕</button>
-      </div>`;
+      html += `<div class="history-item" data-query="${q}"><span class="query">${q}</span><button class="delete-item" data-query="${q}">✕</button></div>`;
     });
     historyContainer.innerHTML = html;
-
     historyContainer.querySelectorAll('.history-item').forEach(item => {
       item.addEventListener('click', (e) => {
         if (e.target.classList.contains('delete-item')) return;
@@ -262,30 +250,15 @@ function initSearchHistory() {
       });
     });
     const clearBtn = historyContainer.querySelector('.clear-history');
-    if (clearBtn) {
-      clearBtn.addEventListener('click', () => {
-        clearSearchHistory();
-        renderHistory();
-      });
-    }
+    if (clearBtn) clearBtn.addEventListener('click', () => { clearSearchHistory(); renderHistory(); });
   }
-
-  input.addEventListener('focus', () => {
-    if (getSearchHistory().length > 0) renderHistory();
-  });
-  input.addEventListener('blur', () => {
-    setTimeout(() => historyContainer.classList.remove('show'), 200);
-  });
-  input.addEventListener('change', () => {
-    const q = input.value.trim();
-    if (q.length >= 2) addSearchHistory(q);
-  });
+  input.addEventListener('focus', () => { if (getSearchHistory().length > 0) renderHistory(); });
+  input.addEventListener('blur', () => { setTimeout(() => historyContainer.classList.remove('show'), 200); });
+  input.addEventListener('change', () => { const q = input.value.trim(); if (q.length >= 2) addSearchHistory(q); });
 }
 
 function getSearchHistory() {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
-  } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; }
 }
 function addSearchHistory(query) {
   let history = getSearchHistory();
@@ -299,11 +272,9 @@ function removeSearchHistoryItem(query) {
   history = history.filter(q => q !== query);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 }
-function clearSearchHistory() {
-  localStorage.removeItem(HISTORY_KEY);
-}
+function clearSearchHistory() { localStorage.removeItem(HISTORY_KEY); }
 
-// ---------- WATCHLIST ----------
+// ---------- Watchlist Rendering (FIXED) ----------
 let currentStatus = 'plan';
 let currentExpandedCategory = null;
 
@@ -320,14 +291,8 @@ function initWatchlistTabs() {
     if (active) moveIndicator(active);
   }, 10);
   tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      if (tab.classList.contains('active')) return;
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      moveIndicator(tab);
-      currentStatus = tab.dataset.status;
-      renderWatchlistForStatus(currentStatus);
-    });
+    tab.removeEventListener('click', tabClickHandler);
+    tab.addEventListener('click', tabClickHandler);
   });
   window.addEventListener('resize', () => {
     const active = tabsContainer.querySelector('.tab-btn.active');
@@ -335,89 +300,121 @@ function initWatchlistTabs() {
   });
 }
 
-function renderWatchlistForStatus(status) {
+async function tabClickHandler(e) {
+  const tab = e.currentTarget;
+  if (tab.classList.contains('active')) return;
+  const tabs = document.querySelectorAll('.watchlist-tabs .tab-btn');
+  tabs.forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  const indicator = document.querySelector('.watchlist-tabs .tab-indicator');
+  indicator.style.width = tab.offsetWidth + 'px';
+  indicator.style.transform = `translateX(${tab.offsetLeft}px)`;
+  currentStatus = tab.dataset.status;
+  await renderWatchlist();
+}
+
+async function renderWatchlist() {
   const container = document.getElementById('watchlistContent');
-  container.classList.add('fade-out');
-  setTimeout(() => {
-    container.innerHTML = '';
-    const categories = ['movie', 'series', 'anime', 'kdrama'];
-    const labels = { movie: 'Movies', series: 'Series', anime: 'Anime', kdrama: 'Kdrama' };
-    let hasAny = false;
-    categories.forEach(cat => {
-      const items = watchlist.getByStatusAndCategory(status, cat);
-      if (!items.length) return;
-      hasAny = true;
-      const row = document.createElement('div');
-      row.className = 'category-row';
-      row.setAttribute('data-category', cat);
-      row.innerHTML = `
-        <div class="category-title">
-          <h3>${labels[cat]}</h3>
-          <span class="category-badge">${items.length}</span>
-        </div>
-      `;
-      const scroll = document.createElement('div');
-      scroll.className = 'row-scroll';
-      items.forEach(item => {
-        const card = createWatchlistCard(item, (id, cat) => {
-          watchlist.remove(id, cat);
-          renderWatchlistForStatus(status);
-          showToast('Removed from watchlist', 'success');
-        });
-        scroll.appendChild(card);
-      });
-      row.appendChild(scroll);
-      container.appendChild(row);
-    });
-    if (!hasAny) {
-      container.innerHTML = '<div class="empty-watchlist"><svg viewBox="0 0 24 24" stroke="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><p>Start building your watchlist</p></div>';
+  if (!container) return;
+
+  container.innerHTML = '<div class="loading-spinner">Loading...</div>';
+  console.log("Fetching watchlist data...");
+
+  const categories = ['movie', 'series', 'anime', 'kdrama'];
+  const labels = { movie: 'Movies', series: 'Series', anime: 'Anime', kdrama: 'Kdrama' };
+  let hasAny = false;
+  const rows = [];
+
+  for (const cat of categories) {
+    const result = await getItemsByStatusAndCategory(currentStatus, cat);
+    if (!result.success) {
+      console.error(`Failed to fetch ${cat}:`, result.error);
+      continue;
     }
-    container.classList.remove('fade-out');
-    // Attach click listeners for category rows
-    document.querySelectorAll('.category-row').forEach(row => {
-      row.addEventListener('click', (e) => {
-        if (e.target.closest('.remove-btn')) return;
-        const category = row.getAttribute('data-category');
-        openExpandedView(category);
+    const items = result.items;
+    if (items.length === 0) continue;
+    hasAny = true;
+
+    const row = document.createElement('div');
+    row.className = 'category-row';
+    row.setAttribute('data-category', cat);
+    row.innerHTML = `<div class="category-title"><h3>${labels[cat]}</h3><span class="category-badge">${items.length}</span></div>`;
+    const scrollDiv = document.createElement('div');
+    scrollDiv.className = 'row-scroll';
+    items.forEach(item => {
+      const card = window.createWatchlistCard(item, async (docId) => {
+        const res = await removeFromWatchlist(docId);
+        if (res.success) {
+          await renderWatchlist();
+          showToast('Removed from watchlist', 'success');
+        } else {
+          showToast('Error removing item', 'error');
+        }
       });
+      scrollDiv.appendChild(card);
     });
-  }, 150);
+    row.appendChild(scrollDiv);
+    rows.push(row);
+  }
+
+  container.innerHTML = '';
+  rows.forEach(row => container.appendChild(row));
+
+  if (!hasAny) {
+    container.innerHTML = '<div class="empty-watchlist"><svg viewBox="0 0 24 24" stroke="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><p>Start building your watchlist</p></div>';
+  }
+
+  document.querySelectorAll('.category-row').forEach(row => {
+    row.removeEventListener('click', categoryClickHandler);
+    row.addEventListener('click', categoryClickHandler);
+  });
+
+  console.log("Render complete");
+}
+
+function categoryClickHandler(e) {
+  if (e.target.closest('.remove-btn')) return;
+  const category = e.currentTarget.getAttribute('data-category');
+  openExpandedView(category);
 }
 
 function setupWatchlistExpandedView() {
   const backBtn = document.getElementById('expandedBackBtn');
-  backBtn?.addEventListener('click', closeExpandedView);
+  if (backBtn) {
+    backBtn.removeEventListener('click', closeExpandedView);
+    backBtn.addEventListener('click', closeExpandedView);
+  }
 }
 
-function openExpandedView(category) {
+async function openExpandedView(category) {
   currentExpandedCategory = category;
   const normalView = document.getElementById('watchlistNormalView');
   const expandedView = document.getElementById('watchlistExpandedView');
   const expandedTitle = document.getElementById('expandedTitle');
   const expandedGrid = document.getElementById('expandedGrid');
-
   const labels = { movie: 'Movies', series: 'Series', anime: 'Anime', kdrama: 'Kdrama' };
   expandedTitle.textContent = labels[category] || 'Movies';
 
-  const items = watchlist.getByStatusAndCategory(currentStatus, category);
+  const result = await getItemsByStatusAndCategory(currentStatus, category);
+  const items = result.success ? result.items : [];
   expandedGrid.innerHTML = '';
   if (items.length === 0) {
     expandedGrid.innerHTML = '<p class="empty-message">No items in this category</p>';
   } else {
     items.forEach(item => {
-      const card = createWatchlistCard(item, (id, cat) => {
-        watchlist.remove(id, cat);
-        // re-render both views
-        renderWatchlistForStatus(currentStatus);
-        if (currentExpandedCategory === cat) {
-          openExpandedView(cat); // refresh expanded view
+      const card = window.createWatchlistCard(item, async (docId) => {
+        const res = await removeFromWatchlist(docId);
+        if (res.success) {
+          await renderWatchlist();
+          if (currentExpandedCategory === category) openExpandedView(category);
+          showToast('Removed from watchlist', 'success');
+        } else {
+          showToast('Error removing item', 'error');
         }
-        showToast('Removed from watchlist', 'success');
       });
       expandedGrid.appendChild(card);
     });
   }
-
   normalView.style.display = 'none';
   expandedView.style.display = 'block';
   document.body.style.overflow = 'hidden';
@@ -432,33 +429,29 @@ function closeExpandedView() {
   currentExpandedCategory = null;
 }
 
-// ---------- DETAILS ----------
+// ---------- Details ----------
 let currentItem = null;
 async function showItemDetails(id, type) {
   let item;
   if (type === 'movie') {
-    item = await fetchMovieDetails(id);
+    item = await window.fetchMovieDetails(id);
   } else {
-    item = await fetchTVDetails(id);
+    item = await window.fetchTVDetails(id);
   }
   if (!item) return;
   currentItem = item;
-
   const title = item.title || item.name;
   const releaseDate = item.release_date || item.first_air_date;
   const year = releaseDate ? releaseDate.split('-')[0] : 'N/A';
   const runtime = item.runtime || (item.episode_run_time ? item.episode_run_time[0] : null);
-
   const poster = item.poster_path ? IMG_BASE + item.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster';
   const backdrop = item.backdrop_path ? `url(${IMG_BASE_ORIGINAL + item.backdrop_path})` : 'none';
-  
   document.getElementById('detailsBackdrop').style.backgroundImage = backdrop;
   document.getElementById('detailsPoster').src = poster;
   document.getElementById('detailsTitle').textContent = title;
   document.getElementById('detailsYear').textContent = year;
   document.getElementById('detailsRating').innerHTML = `⭐ ${item.vote_average ? item.vote_average.toFixed(1) : 'NR'}`;
   document.getElementById('detailsRuntime').textContent = runtime ? runtime + ' min' : '';
-  
   const genresContainer = document.getElementById('detailsGenres');
   genresContainer.innerHTML = '';
   item.genres?.forEach(g => {
@@ -467,10 +460,7 @@ async function showItemDetails(id, type) {
     span.textContent = g.name;
     genresContainer.appendChild(span);
   });
-
-  const overviewEl = document.getElementById('detailsOverview');
-  overviewEl.textContent = item.overview || 'No overview available.';
-
+  document.getElementById('detailsOverview').textContent = item.overview || 'No overview available.';
   const castContainer = document.getElementById('detailsCast');
   castContainer.innerHTML = '';
   if (item.credits?.cast) {
@@ -482,7 +472,6 @@ async function showItemDetails(id, type) {
       castContainer.appendChild(div);
     });
   }
-
   const trailerBtn = document.getElementById('trailerBtn');
   const trailer = item.videos?.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube');
   if (trailer) {
@@ -491,7 +480,6 @@ async function showItemDetails(id, type) {
   } else {
     trailerBtn.style.display = 'none';
   }
-
   document.body.classList.add('modal-open');
   document.getElementById('detailsModal').classList.add('show');
 }
@@ -502,20 +490,20 @@ function hideDetailsModal() {
   currentItem = null;
 }
 
-// ---------- ADD MODAL ----------
+// ---------- Add Modal ----------
 let currentAddItem = null;
 function showAddModal(item) {
-  currentAddItem = item;
+  window.currentAddItem = item;
   document.body.classList.add('modal-open');
   document.getElementById('addModal').classList.add('show');
 }
 function hideAddModal() {
   document.body.classList.remove('modal-open');
   document.getElementById('addModal').classList.remove('show');
-  currentAddItem = null;
+  window.currentAddItem = null;
 }
 
-// ---------- TOAST ----------
+// ---------- Toast ----------
 function showToast(msg, type) {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
@@ -527,3 +515,12 @@ function showToast(msg, type) {
     setTimeout(() => toast.remove(), 300);
   }, 2000);
 }
+
+// Expose globals
+window.showAddModal = showAddModal;
+window.showItemDetails = showItemDetails;
+window.showToast = showToast;
+window.renderWatchlist = renderWatchlist;
+window.currentStatus = currentStatus;
+window.currentAddItem = currentAddItem;
+window.currentItem = currentItem;

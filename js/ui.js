@@ -69,6 +69,7 @@ window.createWatchlistCard = function(item, onRemove) {
   return card;
 };
 
+// Robust tap vs scroll detection
 function attachCardHandlers(card) {
   let pressTimer = null;
   let longPressTriggered = false;
@@ -139,6 +140,7 @@ function attachCardHandlers(card) {
     isScrolling = false;
   };
 
+  // Mouse events
   const handleMouseDown = (e) => {
     if (e.target.closest('.remove-btn')) return;
     startX = e.clientX;
@@ -251,12 +253,12 @@ window.centerFirstHeroCard = function(container) {
   container.scrollLeft = (containerWidth / 2) - (cardWidth / 2) - (gap / 2);
 };
 
+// Custom dropdown initialization (fixed for modals)
 function initCustomDropdowns() {
   document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
     const selected = dropdown.querySelector('.dropdown-selected');
     const options = dropdown.querySelectorAll('.dropdown-option');
 
-    // Set initial selected if none
     if (!dropdown.querySelector('.dropdown-option.selected')) {
       const first = options[0];
       if (first) {
@@ -265,31 +267,25 @@ function initCustomDropdowns() {
       }
     }
 
-    // Toggle dropdown on pointerdown
     selected.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      // Close all other dropdowns
       document.querySelectorAll('.custom-dropdown.open').forEach(d => {
         if (d !== dropdown) d.classList.remove('open');
       });
       dropdown.classList.toggle('open');
     });
 
-    // Option selection
     options.forEach(opt => {
       opt.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        // Remove selected class from all options in this dropdown
         dropdown.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
         opt.classList.add('selected');
         selected.textContent = opt.textContent;
-        // Close this dropdown
         dropdown.classList.remove('open');
       });
     });
   });
 
-  // Close any open dropdown when clicking outside
   document.addEventListener('pointerdown', (e) => {
     if (!e.target.closest('.custom-dropdown')) {
       document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
