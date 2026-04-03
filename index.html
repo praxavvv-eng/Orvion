@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,17 +8,24 @@
 </head>
 <body class="home-page">
   <main>
+    <!-- Hero carousel -->
     <section class="hero">
       <div class="hero-carousel" id="heroCarousel"></div>
     </section>
+
+    <!-- Trending row -->
     <section class="trending">
       <h2>Trending</h2>
       <div class="horizontal-scroll" id="trendingScroll"></div>
     </section>
+
+    <!-- Popular row -->
     <section class="popular">
       <h2>Popular</h2>
       <div class="horizontal-scroll" id="popularScroll"></div>
     </section>
+
+    <!-- Top Rated row -->
     <section class="top-rated">
       <h2>Top Rated</h2>
       <div class="horizontal-scroll" id="topRatedScroll"></div>
@@ -45,7 +51,7 @@
     </a>
   </nav>
 
-  <!-- Modals -->
+  <!-- Add to Watchlist modal -->
   <div class="modal" id="addModal">
     <div class="modal-content add-modal-content glass">
       <div class="modal-header">
@@ -84,6 +90,7 @@
     </div>
   </div>
 
+  <!-- Details modal -->
   <div class="modal" id="detailsModal">
     <div class="modal-content details-modal glass">
       <button class="close-btn" id="closeDetails">&times;</button>
@@ -111,7 +118,6 @@
     </div>
   </div>
 
-  <!-- Scripts -->
   <script src="js/api.js"></script>
   <script src="js/ui.js"></script>
 

@@ -35,3 +35,5 @@ window.fetchSearchMulti = (query, page = 1) => {
   if (!query.trim()) return Promise.resolve([]);
   return tmdbFetch(`/search/multi?query=${encodeURIComponent(query)}&page=${page}`);
 };
+window.IMG_BASE = IMG_BASE;
+window.IMG_BASE_ORIGINAL = IMG_BASE_ORIGINAL;

@@ -1,13 +1,18 @@
+// js/ui.js - Full with small, premium remove button (SVG)
 const observers = [];
 
+// ---------- Hero Card ----------
 window.createHeroCard = function(movie) {
   const card = document.createElement('div');
   card.className = 'hero-card';
   card.dataset.id = movie.id;
   card.dataset.type = 'movie';
-  const poster = movie.poster_path ? IMG_BASE + movie.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster';
+  
+  const posterUrl = movie.poster_path ? window.IMG_BASE + movie.poster_path : null;
+  const poster = posterUrl || 'https://via.placeholder.com/300x450?text=No+Image';
   const year = movie.release_date ? movie.release_date.split('-')[0] : 'N/A';
   const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'NR';
+  
   card.innerHTML = `
     <div class="poster-container">
       <img src="${poster}" alt="${movie.title}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450?text=No+Image'">
@@ -21,13 +26,15 @@ window.createHeroCard = function(movie) {
   return card;
 };
 
+// ---------- Small Card (for rows, search, discover) ----------
 window.createSmallCard = function(item) {
   const card = document.createElement('div');
   card.className = 'card-sm';
   card.dataset.id = item.id;
   const type = item.title ? 'movie' : 'tv';
   card.dataset.type = type;
-  const poster = item.poster_path ? IMG_BASE + item.poster_path : 'https://via.placeholder.com/140x210?text=No+Poster';
+  const posterUrl = item.poster_path ? window.IMG_BASE + item.poster_path : null;
+  const poster = posterUrl || 'https://via.placeholder.com/140x210?text=No+Image';
   const title = item.title || item.name || 'Untitled';
   const rating = item.vote_average ? item.vote_average.toFixed(1) : 'NR';
   card.innerHTML = `
@@ -41,35 +48,62 @@ window.createSmallCard = function(item) {
   return card;
 };
 
+// ---------- Watchlist Card (with premium remove button) ----------
 window.createWatchlistCard = function(item, onRemove) {
   const card = document.createElement('div');
   card.className = 'card-sm';
   card.dataset.id = item.id;
   card.dataset.type = item.category === 'movie' ? 'movie' : 'tv';
   const poster = item.poster || 'https://via.placeholder.com/140x210?text=No+Image';
-  const rating = item.rating ? `⭐ ${item.rating}` : '';
-  card.innerHTML = `
-    <div class="poster-container">
-      <img src="${poster}" alt="${item.title}" loading="lazy">
-      <div class="rating-badge">${rating}</div>
-    </div>
-    <div class="title">${item.title}</div>
-  `;
-  if (onRemove) {
+  const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}` : '';
+  
+  // Poster container
+  const posterContainer = document.createElement('div');
+  posterContainer.className = 'poster-container';
+  const img = document.createElement('img');
+  img.src = poster;
+  img.alt = item.title;
+  img.loading = 'lazy';
+  posterContainer.appendChild(img);
+  
+  // Rating badge
+  const ratingBadge = document.createElement('div');
+  ratingBadge.className = 'rating-badge';
+  ratingBadge.textContent = rating;
+  posterContainer.appendChild(ratingBadge);
+  
+  // Premium Remove Button (SVG, small, subtle)
+  if (onRemove && item.docId) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
-    removeBtn.textContent = '✕';
+    removeBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    `;
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      onRemove(item.id, item.category);
+      // Press animation
+      removeBtn.style.transform = 'scale(0.92)';
+      setTimeout(() => { removeBtn.style.transform = ''; }, 120);
+      onRemove(item.docId);
     });
-    card.querySelector('.poster-container').appendChild(removeBtn);
+    posterContainer.appendChild(removeBtn);
   }
+  
+  card.appendChild(posterContainer);
+  
+  const titleDiv = document.createElement('div');
+  titleDiv.className = 'title';
+  titleDiv.textContent = item.title;
+  card.appendChild(titleDiv);
+  
   attachCardHandlers(card);
   return card;
 };
 
-// Robust tap vs scroll detection
+// ---------- Touch / Mouse Handlers (unchanged, but ensure remove button clicks work) ----------
 function attachCardHandlers(card) {
   let pressTimer = null;
   let longPressTriggered = false;
@@ -85,6 +119,8 @@ function attachCardHandlers(card) {
   };
 
   const handleTouchStart = (e) => {
+    // Ignore remove button interactions
+    if (e.target.closest('.remove-btn')) return;
     const touch = e.touches[0];
     startX = touch.clientX;
     startY = touch.clientY;
@@ -99,7 +135,7 @@ function attachCardHandlers(card) {
       const title = card.querySelector('.card-title')?.textContent || card.querySelector('.title')?.textContent || '';
       const poster = card.querySelector('img')?.src || '';
       const item = { id: Number(id), title, poster };
-      showAddModal(item);
+      window.showAddModal(item);
     }, 500);
   };
 
@@ -115,6 +151,7 @@ function attachCardHandlers(card) {
   };
 
   const handleTouchEnd = (e) => {
+    if (e.target.closest('.remove-btn')) return;
     if (pressTimer) {
       clearTimeout(pressTimer);
       pressTimer = null;
@@ -128,7 +165,7 @@ function attachCardHandlers(card) {
       const type = card.dataset.type;
       if (id && type) {
         setTimeout(() => {
-          showItemDetails(id, type);
+          window.showItemDetails(id, type);
         }, 50);
       }
     }
@@ -140,7 +177,6 @@ function attachCardHandlers(card) {
     isScrolling = false;
   };
 
-  // Mouse events
   const handleMouseDown = (e) => {
     if (e.target.closest('.remove-btn')) return;
     startX = e.clientX;
@@ -156,7 +192,7 @@ function attachCardHandlers(card) {
       const title = card.querySelector('.card-title')?.textContent || card.querySelector('.title')?.textContent || '';
       const poster = card.querySelector('img')?.src || '';
       const item = { id: Number(id), title, poster };
-      showAddModal(item);
+      window.showAddModal(item);
     }, 500);
   };
 
@@ -171,6 +207,7 @@ function attachCardHandlers(card) {
   };
 
   const handleMouseUp = (e) => {
+    if (e.target.closest('.remove-btn')) return;
     if (pressTimer) {
       clearTimeout(pressTimer);
       pressTimer = null;
@@ -184,7 +221,7 @@ function attachCardHandlers(card) {
       const type = card.dataset.type;
       if (id && type) {
         setTimeout(() => {
-          showItemDetails(id, type);
+          window.showItemDetails(id, type);
         }, 50);
       }
     }
@@ -207,6 +244,7 @@ function attachCardHandlers(card) {
   card.addEventListener('mouseleave', handleMouseLeave);
 }
 
+// ---------- Drag Scroll for Hero Carousel ----------
 window.enableDragScroll = function(container) {
   let isDown = false, startX, scrollLeft;
   container.addEventListener('mousedown', (e) => {
@@ -253,7 +291,7 @@ window.centerFirstHeroCard = function(container) {
   container.scrollLeft = (containerWidth / 2) - (cardWidth / 2) - (gap / 2);
 };
 
-// Custom dropdown initialization (fixed for modals)
+// ---------- Dropdown Initialization (global) ----------
 function initCustomDropdowns() {
   document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
     const selected = dropdown.querySelector('.dropdown-selected');

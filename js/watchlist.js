@@ -1,4 +1,4 @@
-// js/watchlist.js - Complete, production-ready with Date.now() and robust queries
+// js/watchlist.js - Full with duplicate prevention and category move
 import {
   collection,
   addDoc,
@@ -19,9 +19,16 @@ function getCollection() {
   return collection(window.db, COLLECTION_NAME);
 }
 
+// ---------- Add Item (strict duplicate check by id+category) ----------
 export async function addToWatchlist(item) {
   try {
     const col = getCollection();
+    const q = query(col, where("id", "==", item.id), where("category", "==", item.category));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      console.log("Item already exists:", item.id, item.category);
+      return { success: false, error: "already_exists" };
+    }
     const docRef = await addDoc(col, {
       id: item.id,
       title: item.title,
@@ -38,6 +45,7 @@ export async function addToWatchlist(item) {
   }
 }
 
+// ---------- Remove Item ----------
 export async function removeFromWatchlist(docId) {
   try {
     const docRef = doc(window.db, COLLECTION_NAME, docId);
@@ -50,11 +58,39 @@ export async function removeFromWatchlist(docId) {
   }
 }
 
-export async function updateWatchlistItem(docId, updates) {
+// ---------- Update Item (supports changing category – removes old entry if category changes) ----------
+export async function updateWatchlistItem(id, updates) {
   try {
-    const docRef = doc(window.db, COLLECTION_NAME, docId);
-    await updateDoc(docRef, updates);
-    console.log("Updated:", docId);
+    // First, find the existing document(s) with this id
+    const col = getCollection();
+    const q = query(col, where("id", "==", id));
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return { success: false, error: "not_found" };
+
+    for (const docSnap of snapshot.docs) {
+      const oldData = docSnap.data();
+      const newCategory = updates.category;
+      if (newCategory && newCategory !== oldData.category) {
+        // Category changed: delete the old document and create a new one with updated category
+        await deleteDoc(docSnap.ref);
+        const newItem = {
+          id: id,
+          title: updates.title || oldData.title,
+          poster: updates.poster || oldData.poster,
+          category: newCategory,
+          status: updates.status || oldData.status,
+          added: oldData.added || Date.now()
+        };
+        const newDocRef = await addDoc(col, newItem);
+        console.log("Moved to new category, new docId:", newDocRef.id);
+        return { success: true, docId: newDocRef.id };
+      } else {
+        // Simple update (status change only)
+        await updateDoc(docSnap.ref, updates);
+        console.log("Updated:", docSnap.id);
+        return { success: true, docId: docSnap.id };
+      }
+    }
     return { success: true };
   } catch (error) {
     console.error("Update error:", error);
@@ -62,6 +98,26 @@ export async function updateWatchlistItem(docId, updates) {
   }
 }
 
+// ---------- Get Items by Status and Category ----------
+export async function getItemsByStatusAndCategory(status, category) {
+  try {
+    const col = getCollection();
+    const q = query(
+      col,
+      where("status", "==", status),
+      where("category", "==", category),
+      orderBy("added", "desc")
+    );
+    const snapshot = await getDocs(q);
+    const items = snapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+    return { success: true, items };
+  } catch (error) {
+    console.error("Query error:", error);
+    return { success: false, items: [] };
+  }
+}
+
+// ---------- Get All Items ----------
 export async function getAllWatchlist() {
   try {
     const col = getCollection();
@@ -74,25 +130,7 @@ export async function getAllWatchlist() {
   }
 }
 
-export async function getItemsByStatusAndCategory(status, category) {
-  try {
-    const col = getCollection();
-    const q = query(
-      col,
-      where("status", "==", status),
-      where("category", "==", category),
-      orderBy("added", "desc")
-    );
-    const snapshot = await getDocs(q);
-    const items = snapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-    console.log(`Fetched ${items.length} for ${status}/${category}`);
-    return { success: true, items };
-  } catch (error) {
-    console.error("Query error:", error);
-    return { success: false, items: [] };
-  }
-}
-
+// ---------- Real-time Subscription ----------
 export function subscribeWatchlist(callback) {
   try {
     const col = getCollection();

@@ -1,7 +1,7 @@
-// js/app.js - Complete with fixed watchlist rendering (loader removed)
+// js/app.js - Full application logic (fixed duplicate identifier error)
 // IMPORTANT: Run with Live Server or localhost (http://). Do NOT open file:// directly.
 
-import { addToWatchlist, removeFromWatchlist, updateWatchlistItem, getItemsByStatusAndCategory, subscribeWatchlist } from './watchlist.js';
+import { addToWatchlist, removeFromWatchlist, getItemsByStatusAndCategory } from './watchlist.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   if (typeof initCustomDropdowns === 'function') initCustomDropdowns();
@@ -53,6 +53,8 @@ function initModals() {
         if (document.body.classList.contains('watchlist-page')) {
           await renderWatchlist();
         }
+      } else if (result.error === 'already_exists') {
+        showToast('Already in watchlist', 'error');
       } else {
         showToast('Error adding item', 'error');
       }
@@ -81,66 +83,77 @@ function detailsAddHandler() {
   window.currentAddItem = {
     id: window.currentItem.id,
     title: window.currentItem.title || window.currentItem.name,
-    poster: window.currentItem.poster_path ? IMG_BASE + window.currentItem.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
+    poster: window.currentItem.poster_path ? window.IMG_BASE + window.currentItem.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
   };
   hideDetailsModal();
   showAddModal(window.currentAddItem);
 }
 
-// ---------- Home Page ----------
+// ---------- Home Page (Fixed Hero) ----------
 async function initHome() {
   const heroContainer = document.getElementById('heroCarousel');
   const trendingScroll = document.getElementById('trendingScroll');
   const popularScroll = document.getElementById('popularScroll');
   const topRatedScroll = document.getElementById('topRatedScroll');
 
-  let heroMovies = [];
-  const lastHeroUpdate = localStorage.getItem('heroLastUpdate');
-  const today = new Date().toDateString();
-  if (lastHeroUpdate === today) {
-    heroMovies = JSON.parse(localStorage.getItem('heroMovies') || '[]');
-  } else {
-    const [trending, popular, topRated] = await Promise.all([
-      window.fetchTrending(), window.fetchPopular(), window.fetchTopRated()
-    ]);
-    heroMovies = [...trending, ...popular, ...topRated]
-      .sort(() => 0.5 - Math.random())
-      .slice(0, 10);
-    localStorage.setItem('heroMovies', JSON.stringify(heroMovies));
-    localStorage.setItem('heroLastUpdate', today);
-  }
+  if (!heroContainer) return;
 
-  heroMovies.forEach(movie => heroContainer.appendChild(window.createHeroCard(movie)));
-  setTimeout(() => window.centerFirstHeroCard(heroContainer), 50);
-  const firstCard = heroContainer.querySelector('.hero-card');
-  if (firstCard) firstCard.classList.add('active');
-  window.enableDragScroll(heroContainer);
-  window.observeHeroCards(heroContainer);
+  try {
+    // Fetch fresh data – renamed variable to avoid conflict
+    const trendingData = await window.fetchTrending().catch(err => { console.error("Trending fetch failed:", err); return []; });
+    const popularData = await window.fetchPopular().catch(err => { console.error("Popular fetch failed:", err); return []; });
+    const topRatedData = await window.fetchTopRated().catch(err => { console.error("TopRated fetch failed:", err); return []; });
 
-  let autoSlideInterval = setInterval(() => {
-    const container = heroContainer;
-    const activeCard = container.querySelector('.hero-card.active');
-    if (!activeCard) return;
-    const next = activeCard.nextElementSibling || container.firstElementChild;
-    if (next) {
-      const containerRect = container.getBoundingClientRect();
-      const cardRect = next.getBoundingClientRect();
-      const targetLeft = container.scrollLeft + (cardRect.left - containerRect.left) - (containerRect.width / 2) + (cardRect.width / 2);
-      container.scrollTo({ left: targetLeft, behavior: 'smooth' });
+    const allMovies = [...trendingData, ...popularData, ...topRatedData];
+    if (allMovies.length === 0) {
+      heroContainer.innerHTML = '<div class="empty-message">No movies available</div>';
+      return;
     }
-  }, 4000);
-  heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval), { once: true });
-  heroContainer.addEventListener('mousedown', () => clearInterval(autoSlideInterval), { once: true });
 
-  const trending = await window.fetchTrending();
-  const popular = await window.fetchPopular();
-  const topRated = await window.fetchTopRated();
-  trending.slice(0, 12).forEach(m => trendingScroll.appendChild(window.createSmallCard(m)));
-  popular.slice(0, 12).forEach(m => popularScroll.appendChild(window.createSmallCard(m)));
-  topRated.slice(0, 12).forEach(m => topRatedScroll.appendChild(window.createSmallCard(m)));
+    // Shuffle and take first 10
+    const shuffled = allMovies.sort(() => 0.5 - Math.random());
+    const heroMovies = shuffled.slice(0, 10);
+
+    heroContainer.innerHTML = '';
+    heroMovies.forEach(movie => {
+      if (movie && movie.id) {
+        heroContainer.appendChild(window.createHeroCard(movie));
+      }
+    });
+
+    setTimeout(() => window.centerFirstHeroCard(heroContainer), 100);
+    const firstCard = heroContainer.querySelector('.hero-card');
+    if (firstCard) firstCard.classList.add('active');
+    window.enableDragScroll(heroContainer);
+    window.observeHeroCards(heroContainer);
+
+    // Auto-slide every 4 seconds
+    let autoSlideInterval = setInterval(() => {
+      const container = heroContainer;
+      const activeCard = container.querySelector('.hero-card.active');
+      if (!activeCard) return;
+      const next = activeCard.nextElementSibling || container.firstElementChild;
+      if (next) {
+        const containerRect = container.getBoundingClientRect();
+        const cardRect = next.getBoundingClientRect();
+        const targetLeft = container.scrollLeft + (cardRect.left - containerRect.left) - (containerRect.width / 2) + (cardRect.width / 2);
+        container.scrollTo({ left: targetLeft, behavior: 'smooth' });
+      }
+    }, 4000);
+    heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval), { once: true });
+    heroContainer.addEventListener('mousedown', () => clearInterval(autoSlideInterval), { once: true });
+
+    // Populate rows
+    trendingData.slice(0, 12).forEach(m => trendingScroll.appendChild(window.createSmallCard(m)));
+    popularData.slice(0, 12).forEach(m => popularScroll.appendChild(window.createSmallCard(m)));
+    topRatedData.slice(0, 12).forEach(m => topRatedScroll.appendChild(window.createSmallCard(m)));
+  } catch (error) {
+    console.error("Home init error:", error);
+    heroContainer.innerHTML = '<div class="empty-message">Failed to load movies</div>';
+  }
 }
 
-// ---------- Search Page ----------
+// ---------- Search Page (unchanged) ----------
 let searchState = { query: '', page: 1, totalPages: 1, loading: false, hasMore: true };
 
 function initSearch() {
@@ -274,7 +287,7 @@ function removeSearchHistoryItem(query) {
 }
 function clearSearchHistory() { localStorage.removeItem(HISTORY_KEY); }
 
-// ---------- Watchlist Rendering (FIXED) ----------
+// ---------- Watchlist Rendering ----------
 let currentStatus = 'plan';
 let currentExpandedCategory = null;
 
@@ -444,8 +457,8 @@ async function showItemDetails(id, type) {
   const releaseDate = item.release_date || item.first_air_date;
   const year = releaseDate ? releaseDate.split('-')[0] : 'N/A';
   const runtime = item.runtime || (item.episode_run_time ? item.episode_run_time[0] : null);
-  const poster = item.poster_path ? IMG_BASE + item.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster';
-  const backdrop = item.backdrop_path ? `url(${IMG_BASE_ORIGINAL + item.backdrop_path})` : 'none';
+  const poster = item.poster_path ? window.IMG_BASE + item.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster';
+  const backdrop = item.backdrop_path ? `url(${window.IMG_BASE_ORIGINAL + item.backdrop_path})` : 'none';
   document.getElementById('detailsBackdrop').style.backgroundImage = backdrop;
   document.getElementById('detailsPoster').src = poster;
   document.getElementById('detailsTitle').textContent = title;
@@ -468,7 +481,7 @@ async function showItemDetails(id, type) {
       if (!actor.profile_path) return;
       const div = document.createElement('div');
       div.className = 'cast-item';
-      div.innerHTML = `<img src="${IMG_BASE + actor.profile_path}" alt="${actor.name}"><div class="name">${actor.name}</div>`;
+      div.innerHTML = `<img src="${window.IMG_BASE + actor.profile_path}" alt="${actor.name}"><div class="name">${actor.name}</div>`;
       castContainer.appendChild(div);
     });
   }

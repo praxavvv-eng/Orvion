@@ -1083,3 +1083,116 @@ img {
   transform: scale(0.98);
   transition: transform 0.1s;
 }
+/* Add this to your existing style.css if not already present */
+.remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border: none;
+  color: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  z-index: 5;
+  transition: all 0.2s;
+}
+.remove-btn:hover {
+  background: rgba(200, 50, 50, 0.9);
+  transform: scale(1.05);
+}
+/* Add/Replace these styles in your style.css */
+
+/* Premium Small Remove Button */
+.remove-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+/* SVG icon styling */
+.remove-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  transition: stroke 0.2s, transform 0.2s;
+}
+
+/* Hover effect – subtle red accent */
+.remove-btn:hover {
+  background: rgba(255, 59, 48, 0.18);
+  border-color: rgba(255, 59, 48, 0.3);
+  transform: scale(1.08);
+  opacity: 1;
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25);
+}
+.remove-btn:hover svg {
+  stroke: #ff3b30;
+  transform: rotate(90deg);
+}
+
+/* Active / press effect */
+.remove-btn:active {
+  transform: scale(0.92);
+  transition: transform 0.1s;
+}
+
+/* Card hover – make button slightly more visible (optional) */
+.card-sm:hover .remove-btn,
+.watchlist-card:hover .remove-btn {
+  opacity: 0.9;
+}
+
+/* Mobile optimization: slightly larger touch area but same visual size */
+@media (max-width: 768px) {
+  .remove-btn {
+    width: 30px;
+    height: 30px;
+    top: 6px;
+    right: 6px;
+  }
+  .remove-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+  /* Increase clickable area via pseudo-element or padding? We'll rely on larger tap target */
+  .remove-btn::after {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: -6px;
+    right: -6px;
+    bottom: -6px;
+    border-radius: 50%;
+  }
+}
+
+/* Ensure button appears above image */
+.poster-container {
+  position: relative;
+}
