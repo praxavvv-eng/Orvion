@@ -1,3 +1,4 @@
+<!-- discover.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,6 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Orvion · discover</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#7c3aed">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Orvion">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body class="discover-page">
   <main>
@@ -34,6 +41,8 @@
       <span>Watchlist</span>
     </a>
   </nav>
+
+  <button id="installAppBtn" style="position: fixed; bottom: 90px; right: 16px; background: #7c3aed; border: none; border-radius: 30px; padding: 10px 16px; color: white; font-weight: bold; display: none; z-index: 1000; box-shadow: 0 4px 12px rgba(124,58,237,0.4); cursor: pointer;">📱 Install App</button>
 
   <!-- Modals (same as index) -->
   <div class="modal" id="addModal">
@@ -134,5 +143,36 @@
   <script type="module" src="js/watchlist.js"></script>
   <script type="module" src="js/app.js"></script>
   <script src="js/discover.js"></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(reg => console.log('Service Worker registered:', reg))
+          .catch(err => console.log('Service Worker registration failed:', err));
+      });
+    }
+
+    let deferredPrompt;
+    const installBtn = document.getElementById('installAppBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (installBtn) installBtn.style.display = 'flex';
+    });
+
+    if (installBtn) {
+      installBtn.addEventListener('click', () => {
+        installBtn.style.display = 'none';
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          deferredPrompt.userChoice.then((choiceResult) => {
+            deferredPrompt = null;
+          });
+        }
+      });
+    }
+  </script>
 </body>
 </html>
