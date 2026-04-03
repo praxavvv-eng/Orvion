@@ -1,7 +1,8 @@
-// js/ui.js - Fixed with explicit click handlers for all cards
+// js/ui.js - Complete, with proper click handling and type propagation
+
 const observers = [];
 
-// ---------- Helper: Attach long-press (only) without interfering with click ----------
+// ---------- Helper: Only long-press (no click interference) ----------
 function attachLongPressOnly(card) {
   let pressTimer = null;
   let longPressTriggered = false;
@@ -154,9 +155,12 @@ window.createSmallCard = function(item, explicitType) {
   const card = document.createElement('div');
   card.className = 'card-sm';
   card.dataset.id = item.id;
+  // Determine type: if explicitType provided, use it; otherwise infer from media_type or title
   let type = explicitType;
   if (!type) {
-    type = item.media_type === 'tv' ? 'tv' : (item.title ? 'movie' : 'tv');
+    if (item.media_type === 'tv') type = 'tv';
+    else if (item.media_type === 'movie') type = 'movie';
+    else type = item.title ? 'movie' : 'tv';
   }
   card.dataset.type = type;
   const posterUrl = item.poster_path ? window.IMG_BASE + item.poster_path : null;
@@ -181,7 +185,7 @@ window.createSmallCard = function(item, explicitType) {
   return card;
 };
 
-// ---------- Watchlist Card (with remove button) ----------
+// ---------- Watchlist Card ----------
 window.createWatchlistCard = function(item, onRemove) {
   const card = document.createElement('div');
   card.className = 'card-sm';
@@ -287,7 +291,7 @@ window.centerFirstHeroCard = function(container) {
   container.scrollLeft = (containerWidth / 2) - (cardWidth / 2) - (gap / 2);
 };
 
-// ---------- Dropdown Initialization (global) ----------
+// ---------- Dropdown Initialization ----------
 function initCustomDropdowns() {
   document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
     const selected = dropdown.querySelector('.dropdown-selected');

@@ -1,13 +1,12 @@
-// js/app.js - Full fixed version with proper modal data, event handling, and discover TV fix
+// js/app.js - Complete with TV series fix and modal debouncing
 
 import { addToWatchlist, removeFromWatchlist, getItemsByStatusAndCategory } from './watchlist.js';
 
-// Global variables
 let currentStatus = 'plan';
 let currentExpandedCategory = null;
 let currentItem = null;
 let currentAddItem = null;
-let isOpeningModal = false; // debounce flag
+let isOpeningModal = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
   if (typeof initCustomDropdowns === 'function') initCustomDropdowns();
@@ -155,7 +154,7 @@ async function initHome() {
   }
 }
 
-// ---------- Search & History (unchanged) ----------
+// ---------- Search & History ----------
 let searchState = { query: '', page: 1, totalPages: 1, loading: false, hasMore: true };
 
 function initSearch() {
@@ -215,7 +214,6 @@ async function loadSearchResults(query, page, replace = false) {
   });
   if (replace) grid.innerHTML = '';
   results.forEach(item => {
-    // Determine type: if media_type exists use it, else infer from title presence
     const type = item.media_type === 'tv' ? 'tv' : (item.title ? 'movie' : 'tv');
     const card = window.createSmallCard(item, type);
     grid.appendChild(card);
@@ -293,7 +291,7 @@ function removeSearchHistoryItem(query) {
 }
 function clearSearchHistory() { localStorage.removeItem(HISTORY_KEY); }
 
-// ---------- Watchlist Rendering (Fixed event handling) ----------
+// ---------- Watchlist Rendering ----------
 function initWatchlistTabs() {
   const tabsContainer = document.querySelector('.watchlist-tabs');
   const tabs = tabsContainer.querySelectorAll('.tab-btn');
@@ -389,7 +387,6 @@ async function renderWatchlist() {
 }
 
 function categoryClickHandler(e) {
-  // If click is inside a card, do not open expanded view
   if (e.target.closest('.card-sm')) return;
   const category = e.currentTarget.getAttribute('data-category');
   openExpandedView(category);
@@ -446,9 +443,8 @@ function closeExpandedView() {
   currentExpandedCategory = null;
 }
 
-// ---------- Details Modal (Fixed data, debounce) ----------
+// ---------- Details Modal (Fixed for TV) ----------
 async function showItemDetails(id, type) {
-  // Debounce to prevent double opening
   if (isOpeningModal) return;
   isOpeningModal = true;
   setTimeout(() => { isOpeningModal = false; }, 300);
@@ -458,7 +454,7 @@ async function showItemDetails(id, type) {
     return;
   }
 
-  // Clear modal content immediately
+  // Clear modal content
   document.getElementById('detailsTitle').textContent = 'Loading...';
   document.getElementById('detailsPoster').src = 'https://via.placeholder.com/300x450?text=No+Image';
   document.getElementById('detailsOverview').textContent = 'Loading...';
@@ -469,8 +465,12 @@ async function showItemDetails(id, type) {
   let item;
   if (type === 'movie') {
     item = await window.fetchMovieDetails(id);
-  } else {
+  } else if (type === 'tv') {
     item = await window.fetchTVDetails(id);
+  } else {
+    console.error("Unknown type:", type);
+    isOpeningModal = false;
+    return;
   }
   if (!item) {
     console.error("Failed to fetch details", id, type);

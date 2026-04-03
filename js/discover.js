@@ -1,3 +1,4 @@
+// js/discover.js - Corrected to pass media type to createSmallCard
 document.addEventListener('DOMContentLoaded', () => {
   initDiscoverTabs();
   loadDiscover('movie', 1);
@@ -28,7 +29,7 @@ async function loadDiscover(type, page) {
   if (loading || !hasMore) return;
   loading = true;
   document.getElementById('discoverLoader').style.display = 'block';
-  const data = type === 'movie' ? await fetchDiscoverMovies(page) : await fetchDiscoverTV(page);
+  const data = type === 'movie' ? await window.fetchDiscoverMovies(page) : await window.fetchDiscoverTV(page);
   document.getElementById('discoverLoader').style.display = 'none';
   if (!data.length) {
     hasMore = false;
@@ -36,8 +37,11 @@ async function loadDiscover(type, page) {
   }
   const grid = document.getElementById('discoverGrid');
   data.forEach(item => {
+    // Ensure title property
     if (!item.title && item.name) item.title = item.name;
-    const card = createSmallCard(item);
+    // Determine media type explicitly: movie or tv
+    const mediaType = type; // 'movie' or 'tv' from the current tab
+    const card = window.createSmallCard(item, mediaType);
     grid.appendChild(card);
   });
   currentPage++;
