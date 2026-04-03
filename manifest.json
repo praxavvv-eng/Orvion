@@ -2,13 +2,13 @@
 {
   "name": "Orvion",
   "short_name": "Orvion",
-  "description": "Discover and track your favorite movies & TV shows",
-  "theme_color": "#7c3aed",
-  "background_color": "#0b0b0f",
-  "display": "standalone",
-  "orientation": "portrait",
-  "scope": "/",
   "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay"],
+  "background_color": "#0b0b0f",
+  "theme_color": "#7c3aed",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/icons/icon-192.png",

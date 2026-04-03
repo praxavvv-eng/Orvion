@@ -1,5 +1,4 @@
-// service-worker.js (place in root)
-const CACHE_NAME = 'orvion-v1';
+const CACHE_NAME = 'orvion-v2';
 const OFFLINE_URL = '/offline.html';
 
 const STATIC_ASSETS = [
@@ -51,23 +50,17 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request)
         .then((response) => {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, clone);
-          });
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;
         })
-        .catch(() => {
-          return caches.match(event.request);
-        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }
 
   if (url.hostname === 'image.tmdb.org') {
     event.respondWith(
-      caches.match(event.request).then((cached) => {
-        return cached || fetch(event.request);
-      })
+      caches.match(event.request).then((cached) => cached || fetch(event.request))
     );
     return;
   }
@@ -78,9 +71,7 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request).then((response) => {
         if (response.ok) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, clone);
-          });
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
       });
