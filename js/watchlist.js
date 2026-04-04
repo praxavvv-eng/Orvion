@@ -1,4 +1,4 @@
-// js/watchlist.js - Full with duplicate prevention and category move
+// js/watchlist.js – Full with duplicate prevention (Firestore query), no duplicates
 import {
   collection,
   addDoc,
@@ -19,7 +19,7 @@ function getCollection() {
   return collection(window.db, COLLECTION_NAME);
 }
 
-// ---------- Add Item (strict duplicate check by id+category) ----------
+// ---------- Add Item with strict duplicate check ----------
 export async function addToWatchlist(item) {
   try {
     const col = getCollection();
@@ -58,20 +58,17 @@ export async function removeFromWatchlist(docId) {
   }
 }
 
-// ---------- Update Item (supports changing category – removes old entry if category changes) ----------
+// ---------- Update Item (supports category change) ----------
 export async function updateWatchlistItem(id, updates) {
   try {
-    // First, find the existing document(s) with this id
     const col = getCollection();
     const q = query(col, where("id", "==", id));
     const snapshot = await getDocs(q);
     if (snapshot.empty) return { success: false, error: "not_found" };
-
     for (const docSnap of snapshot.docs) {
       const oldData = docSnap.data();
       const newCategory = updates.category;
       if (newCategory && newCategory !== oldData.category) {
-        // Category changed: delete the old document and create a new one with updated category
         await deleteDoc(docSnap.ref);
         const newItem = {
           id: id,
@@ -82,12 +79,9 @@ export async function updateWatchlistItem(id, updates) {
           added: oldData.added || Date.now()
         };
         const newDocRef = await addDoc(col, newItem);
-        console.log("Moved to new category, new docId:", newDocRef.id);
         return { success: true, docId: newDocRef.id };
       } else {
-        // Simple update (status change only)
         await updateDoc(docSnap.ref, updates);
-        console.log("Updated:", docSnap.id);
         return { success: true, docId: docSnap.id };
       }
     }
