@@ -1,4 +1,4 @@
-// js/app.js – Full with fixed search, theme, watchlist, modals
+// js/app.js – Updated to use new API structure (data.results)
 import { addToWatchlist, removeFromWatchlist, getItemsByStatusAndCategory } from './watchlist.js';
 
 let currentStatus = 'plan';
@@ -105,7 +105,7 @@ function showThemeSettings() {
   modal.classList.add('show');
 }
 
-// ---------- MODAL INITIALIZATION (with lock) ----------
+// ---------- MODALS ----------
 function initModals() {
   const cancelBtn = document.getElementById('modalCancel');
   const saveBtn = document.getElementById('modalSave');
@@ -175,7 +175,7 @@ function detailsAddHandler() {
   showAddModal(currentAddItem);
 }
 
-// ---------- HOME PAGE (with fallback) ----------
+// ---------- HOME PAGE (fixed) ----------
 async function initHome() {
   const heroContainer = document.getElementById('heroCarousel');
   const trendingScroll = document.getElementById('trendingScroll');
@@ -185,11 +185,16 @@ async function initHome() {
   if (!heroContainer) return;
 
   try {
-    const trendingData = await window.fetchTrending().catch(err => { console.error("Trending fetch failed:", err); return []; });
-    const popularData = await window.fetchPopular().catch(err => { console.error("Popular fetch failed:", err); return []; });
-    const topRatedData = await window.fetchTopRated().catch(err => { console.error("TopRated fetch failed:", err); return []; });
+    // Fetch data – each returns { results, total_pages }
+    const trendingData = await window.fetchTrending().catch(err => { console.error("Trending fetch failed:", err); return { results: [], total_pages: 1 }; });
+    const popularData = await window.fetchPopular().catch(err => { console.error("Popular fetch failed:", err); return { results: [], total_pages: 1 }; });
+    const topRatedData = await window.fetchTopRated().catch(err => { console.error("TopRated fetch failed:", err); return { results: [], total_pages: 1 }; });
 
-    const allMovies = [...trendingData, ...popularData, ...topRatedData];
+    const trendingMovies = trendingData.results || [];
+    const popularMovies = popularData.results || [];
+    const topRatedMovies = topRatedData.results || [];
+
+    const allMovies = [...trendingMovies, ...popularMovies, ...topRatedMovies];
     if (allMovies.length === 0) {
       heroContainer.innerHTML = '<div class="empty-message">No movies available</div>';
       return;
@@ -226,157 +231,18 @@ async function initHome() {
     heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval), { once: true });
     heroContainer.addEventListener('mousedown', () => clearInterval(autoSlideInterval), { once: true });
 
-    trendingData.slice(0, 12).forEach(m => trendingScroll.appendChild(window.createSmallCard(m)));
-    popularData.slice(0, 12).forEach(m => popularScroll.appendChild(window.createSmallCard(m)));
-    topRatedData.slice(0, 12).forEach(m => topRatedScroll.appendChild(window.createSmallCard(m)));
+    // Populate rows using .results
+    trendingMovies.slice(0, 12).forEach(m => trendingScroll.appendChild(window.createSmallCard(m)));
+    popularMovies.slice(0, 12).forEach(m => popularScroll.appendChild(window.createSmallCard(m)));
+    topRatedMovies.slice(0, 12).forEach(m => topRatedScroll.appendChild(window.createSmallCard(m)));
   } catch (error) {
     console.error("Home init error:", error);
     heroContainer.innerHTML = '<div class="empty-message">Failed to load movies</div>';
   }
 }
 
-// ==================== SEARCH (FIXED) ====================
-let searchTimeout;
-let currentSearchQuery = '';
-let searchPage = 1;
-let isLoadingSearch = false;
-let hasMoreSearch = true;
-let totalSearchPages = 1;
-let seenSearchIds = new Set();
-
-function initSearch() {
-  const input = document.getElementById('searchInput');
-  const resultsGrid = document.getElementById('searchResults');
-  if (!input) return;
-
-  input.addEventListener('input', (e) => {
-    clearTimeout(searchTimeout);
-    const query = e.target.value.trim();
-    currentSearchQuery = query;
-    if (query.length < 2) {
-      resultsGrid.innerHTML = '';
-      seenSearchIds.clear();
-      return;
-    }
-    showSearchSkeleton();
-    searchTimeout = setTimeout(() => performSearch(query, 1, true), 300);
-  });
-
-  // Infinite scroll
-  window.addEventListener('scroll', () => {
-    if (!currentSearchQuery || isLoadingSearch || !hasMoreSearch) return;
-    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-    if (scrollTop + clientHeight >= scrollHeight - 200) {
-      performSearch(currentSearchQuery, searchPage + 1, false);
-    }
-  });
-}
-
-async function performSearch(query, page, replace) {
-  if (isLoadingSearch) return;
-  isLoadingSearch = true;
-  try {
-    const [movieData, tvData] = await Promise.all([
-      window.searchMovies(query, page),
-      window.searchTV(query, page)
-    ]);
-    console.log(`Search ${query} page ${page}: movies=${movieData.results?.length || 0}, tv=${tvData.results?.length || 0}`);
-
-    let combined = [
-      ...(movieData.results || []).map(m => ({ ...m, media_type: 'movie' })),
-      ...(tvData.results || []).map(t => ({ ...t, media_type: 'tv' }))
-    ];
-
-    // Remove duplicates by id + media_type
-    const uniqueMap = new Map();
-    for (const item of combined) {
-      const key = `${item.id}_${item.media_type}`;
-      if (!uniqueMap.has(key)) uniqueMap.set(key, item);
-    }
-    combined = Array.from(uniqueMap.values());
-
-    const totalPagesMovie = movieData.total_pages || 1;
-    const totalPagesTV = tvData.total_pages || 1;
-    totalSearchPages = Math.max(totalPagesMovie, totalPagesTV);
-
-    if (replace) {
-      // First page: rank results, reset seen set
-      const ranked = rankSearchResults(combined, query);
-      seenSearchIds.clear();
-      ranked.forEach(item => seenSearchIds.add(`${item.id}_${item.media_type}`));
-      document.getElementById('searchResults').innerHTML = '';
-      searchPage = page;
-      renderSearchResults(ranked);
-      hasMoreSearch = searchPage < totalSearchPages;
-    } else {
-      // Append only new items
-      const newItems = combined.filter(item => !seenSearchIds.has(`${item.id}_${item.media_type}`));
-      if (newItems.length === 0) {
-        hasMoreSearch = false;
-      } else {
-        newItems.forEach(item => seenSearchIds.add(`${item.id}_${item.media_type}`));
-        renderSearchResults(newItems, false);
-        searchPage = page;
-        hasMoreSearch = page < totalSearchPages;
-      }
-    }
-  } catch (err) {
-    console.error('Search error', err);
-    if (replace) showNoSearchResults();
-  } finally {
-    isLoadingSearch = false;
-  }
-}
-
-function rankSearchResults(items, query) {
-  const q = query.toLowerCase();
-  return items.sort((a, b) => {
-    const aTitle = (a.title || a.name || '').toLowerCase();
-    const bTitle = (b.title || b.name || '').toLowerCase();
-    if (aTitle === q && bTitle !== q) return -1;
-    if (bTitle === q && aTitle !== q) return 1;
-    if (aTitle.startsWith(q) && !bTitle.startsWith(q)) return -1;
-    if (bTitle.startsWith(q) && !aTitle.startsWith(q)) return 1;
-    if (aTitle.includes(q) && !bTitle.includes(q)) return -1;
-    if (bTitle.includes(q) && !aTitle.includes(q)) return 1;
-    return (b.popularity || 0) - (a.popularity || 0);
-  });
-}
-
-function renderSearchResults(items, append = false) {
-  const grid = document.getElementById('searchResults');
-  if (!append) grid.innerHTML = '';
-  items.forEach(item => {
-    // Ensure item has title/name
-    const cardItem = {
-      id: item.id,
-      title: item.title || item.name,
-      name: item.name,
-      poster_path: item.poster_path,
-      vote_average: item.vote_average,
-      media_type: item.media_type
-    };
-    const card = window.createSmallCard(cardItem, item.media_type);
-    grid.appendChild(card);
-  });
-}
-
-function showSearchSkeleton() {
-  const grid = document.getElementById('searchResults');
-  grid.innerHTML = '';
-  for (let i = 0; i < 12; i++) {
-    const skeleton = document.createElement('div');
-    skeleton.className = 'card-skeleton';
-    grid.appendChild(skeleton);
-  }
-}
-
-function showNoSearchResults() {
-  const grid = document.getElementById('searchResults');
-  grid.innerHTML = '<p class="empty-message">No results found</p>';
-}
-
-// ---------- SEARCH HISTORY (unchanged) ----------
+// ---------- SEARCH & HISTORY (dummy, actual in search.js) ----------
+function initSearch() {}
 function initSearchHistory() {
   const HISTORY_KEY = 'searchHistory';
   const MAX_HISTORY = 10;
@@ -436,7 +302,7 @@ function initSearchHistory() {
   function clearSearchHistory() { localStorage.removeItem(HISTORY_KEY); }
 }
 
-// ---------- WATCHLIST RENDERING (with click fix) ----------
+// ---------- WATCHLIST RENDERING (unchanged) ----------
 function initWatchlistTabs() {
   const tabsContainer = document.querySelector('.watchlist-tabs');
   const tabs = tabsContainer.querySelectorAll('.tab-btn');
@@ -572,7 +438,7 @@ function closeExpandedView() {
   currentExpandedCategory = null;
 }
 
-// ---------- DETAILS MODAL (with lock) ----------
+// ---------- DETAILS MODAL (unchanged) ----------
 async function showItemDetails(id, type) {
   if (isOpeningModal) return;
   isOpeningModal = true;

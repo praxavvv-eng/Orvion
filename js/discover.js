@@ -1,21 +1,34 @@
-// js/discover.js - Corrected to pass media type to createSmallCard
-document.addEventListener('DOMContentLoaded', () => {
-  initDiscoverTabs();
-  loadDiscover('movie', 1);
-});
-
+// js/discover.js – Fixed to use data.results from new API structure
 let currentType = 'movie';
 let currentPage = 1;
 let loading = false;
 let hasMore = true;
 
 function initDiscoverTabs() {
-  const tabs = document.querySelectorAll('.discover-tabs .tab-btn');
-  tabs.forEach(tab => {
+  const tabsContainer = document.querySelector('.discover-tabs');
+  const tabs = tabsContainer.querySelectorAll('.tab-btn');
+  const indicator = document.createElement('div');
+  indicator.className = 'tab-indicator';
+  tabsContainer.appendChild(indicator);
+
+  function updateIndicator(activeTab) {
+    const offset = activeTab.offsetLeft;
+    const width = activeTab.offsetWidth;
+    indicator.style.transform = `translateX(${offset}px)`;
+    indicator.style.width = `${width}px`;
+  }
+
+  setTimeout(() => {
+    const active = tabsContainer.querySelector('.tab-btn.active');
+    if (active) updateIndicator(active);
+  }, 10);
+
+  tabs.forEach((tab, idx) => {
     tab.addEventListener('click', () => {
       if (tab.classList.contains('active')) return;
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
+      updateIndicator(tab);
       currentType = tab.dataset.type;
       currentPage = 1;
       hasMore = true;
@@ -23,13 +36,25 @@ function initDiscoverTabs() {
       loadDiscover(currentType, currentPage);
     });
   });
+
+  window.addEventListener('resize', () => {
+    const active = tabsContainer.querySelector('.tab-btn.active');
+    if (active) updateIndicator(active);
+  });
 }
 
 async function loadDiscover(type, page) {
   if (loading || !hasMore) return;
   loading = true;
   document.getElementById('discoverLoader').style.display = 'block';
-  const data = type === 'movie' ? await window.fetchDiscoverMovies(page) : await window.fetchDiscoverTV(page);
+  let data;
+  if (type === 'movie') {
+    const response = await window.fetchDiscoverMovies(page);
+    data = response.results || [];
+  } else {
+    const response = await window.fetchDiscoverTV(page);
+    data = response.results || [];
+  }
   document.getElementById('discoverLoader').style.display = 'none';
   if (!data.length) {
     hasMore = false;
@@ -37,11 +62,8 @@ async function loadDiscover(type, page) {
   }
   const grid = document.getElementById('discoverGrid');
   data.forEach(item => {
-    // Ensure title property
     if (!item.title && item.name) item.title = item.name;
-    // Determine media type explicitly: movie or tv
-    const mediaType = type; // 'movie' or 'tv' from the current tab
-    const card = window.createSmallCard(item, mediaType);
+    const card = window.createSmallCard(item, type);
     grid.appendChild(card);
   });
   currentPage++;
@@ -53,4 +75,9 @@ window.addEventListener('scroll', () => {
   if (scrollTop + clientHeight >= scrollHeight - 200) {
     loadDiscover(currentType, currentPage);
   }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  initDiscoverTabs();
+  loadDiscover('movie', 1);
 });
