@@ -1,4 +1,4 @@
-<!-- search.html – Full fixed version with integrated search logic -->
+<!-- search.html – Full updated with long press support via createSmallCard -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -147,7 +147,7 @@
   <script type="module" src="js/watchlist.js"></script>
   <script type="module" src="js/app.js"></script>
 
-  <!-- Search logic (fixed) -->
+  <!-- Search logic (fixed with long press support via createSmallCard) -->
   <script>
     // ==================== SEARCH STATE ====================
     let searchTimeout;
@@ -199,29 +199,12 @@
       });
     }
 
-    // Render cards
+    // Render cards using window.createSmallCard (which includes long press)
     function renderResults(items, append = false) {
       if (!append) resultsGrid.innerHTML = '';
       items.forEach(item => {
-        const title = item.title || item.name || 'Untitled';
-        const poster = item.poster_path ? window.IMG_BASE + item.poster_path : 'https://via.placeholder.com/140x210?text=No+Image';
-        const rating = item.vote_average ? item.vote_average.toFixed(1) : 'NR';
-        const card = document.createElement('div');
-        card.className = 'card-sm';
-        card.dataset.id = item.id;
-        card.dataset.type = item.media_type;
-        card.innerHTML = `
-          <div class="poster-container">
-            <img src="${poster}" alt="${title}" loading="lazy" onerror="this.src='https://via.placeholder.com/140x210?text=No+Image'">
-            <div class="rating-badge">⭐ ${rating}</div>
-          </div>
-          <div class="title">${title}</div>
-        `;
-        card.addEventListener('click', () => {
-          if (typeof window.showItemDetails === 'function') {
-            window.showItemDetails(item.id, item.media_type);
-          }
-        });
+        // Use the global createSmallCard from ui.js – this gives long press support
+        const card = window.createSmallCard(item, item.media_type);
         resultsGrid.appendChild(card);
       });
     }

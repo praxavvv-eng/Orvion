@@ -1,4 +1,4 @@
-/* style.css – consistent tabs, fixed UI, stable fallback images */
+/* style.css – Full with proper remove button styles */
 * {
   margin: 0;
   padding: 0;
@@ -16,43 +16,6 @@ body {
   color: #ffffff;
   padding-bottom: 100px;
   min-height: 100vh;
-}
-
-/* ---------- GLOBAL LOADER ---------- */
-.global-loader {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: #0a0a0a;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  transition: opacity 0.3s ease, visibility 0.3s ease;
-  pointer-events: none;
-}
-.global-loader.hide {
-  opacity: 0;
-  visibility: hidden;
-}
-.loader-spinner {
-  width: 48px;
-  height: 48px;
-  border: 4px solid rgba(124, 58, 237, 0.2);
-  border-top: 4px solid #7c3aed;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-.loader-text {
-  margin-top: 16px;
-  color: #aaa;
-  font-size: 0.9rem;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 /* ---------- SKELETON ---------- */
@@ -143,7 +106,7 @@ h2 {
   color: #fff;
 }
 
-/* ---------- HERO CAROUSEL (unchanged) ---------- */
+/* ---------- HERO CAROUSEL ---------- */
 .hero {
   margin: 8px 0 8px;
   overflow: visible;
@@ -431,7 +394,7 @@ h2 {
   padding: 16px;
 }
 
-/* ---------- DISCOVER TABS (consistent with watchlist) ---------- */
+/* ---------- DISCOVER TABS (consistent) ---------- */
 .discover-tabs {
   display: flex;
   position: relative;
@@ -511,8 +474,11 @@ h2 {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
-/* ---------- WATCHLIST TABS (same as discover) ---------- */
+/* ---------- WATCHLIST TABS ---------- */
 .watchlist-tabs-container {
   padding: 16px 16px 8px;
 }
@@ -679,6 +645,68 @@ h2 {
   flex: none;
 }
 
+/* ---------- PREMIUM REMOVE BUTTON (CRITICAL) ---------- */
+.remove-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+.remove-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  transition: stroke 0.2s, transform 0.2s;
+}
+.remove-btn:hover {
+  background: rgba(255, 59, 48, 0.18);
+  border-color: rgba(255, 59, 48, 0.3);
+  transform: scale(1.08);
+  opacity: 1;
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25);
+}
+.remove-btn:hover svg {
+  stroke: #ff3b30;
+  transform: rotate(90deg);
+}
+.remove-btn:active {
+  transform: scale(0.92);
+  transition: transform 0.1s;
+}
+@media (max-width: 768px) {
+  .remove-btn {
+    width: 30px;
+    height: 30px;
+    top: 6px;
+    right: 6px;
+  }
+  .remove-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+.poster-container {
+  position: relative;
+}
+
 /* ---------- MODALS (unchanged) ---------- */
 body.modal-open {
   overflow: hidden;
@@ -715,6 +743,7 @@ body.modal-open {
   transform: scale(1);
 }
 
+/* Add modal */
 #addModal .modal-content.add-modal-content {
   background: rgba(20,20,20,0.65);
   backdrop-filter: blur(25px);
@@ -883,6 +912,7 @@ body.modal-open {
   transform: translateY(-1px);
 }
 
+/* Details modal (unchanged) */
 .details-modal {
   width: 90%;
   max-width: 500px;
@@ -1087,6 +1117,7 @@ body.modal-open {
   }
 }
 
+/* ---------- TOAST ---------- */
 .toast {
   position: fixed;
   bottom: 100px;
@@ -1111,6 +1142,7 @@ body.modal-open {
 .toast.success { background: #1e3a2e; border-color: #2a7a3b; }
 .toast.error { background: #3e1e1e; border-color: #a13a3a; }
 
+/* ---------- EMPTY MESSAGE ---------- */
 .empty-message {
   text-align: center;
   padding: 40px 20px;
@@ -1120,6 +1152,7 @@ body.modal-open {
   margin: 20px;
 }
 
+/* ---------- IMAGE DRAG PREVENTION & TAP FEEDBACK ---------- */
 img {
   -webkit-user-drag: none;
   -khtml-user-drag: none;

@@ -1,7 +1,6 @@
-// js/ui.js – Complete with long press detection for search results and all cards
+// js/ui.js – Full with long press working for all cards including search
 const observers = [];
 
-// ---------- PREMIUM REMOVE BUTTON (SVG) ----------
 function attachRipple(button) {
   button.addEventListener('click', function(e) {
     const x = e.clientX - e.target.offsetLeft;
@@ -18,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.btn').forEach(attachRipple);
 });
 
-// ---------- LONG PRESS DETECTION (shared) ----------
 function attachLongPress(card, onLongPress) {
   let pressTimer = null;
   let longPressTriggered = false;
@@ -72,19 +70,16 @@ function attachLongPress(card, onLongPress) {
     isScrolling = false;
   };
 
-  // Touch events
   card.addEventListener('touchstart', startPress, { passive: true });
   card.addEventListener('touchmove', movePress, { passive: true });
   card.addEventListener('touchend', endPress);
   card.addEventListener('touchcancel', cancelPress);
-  // Mouse events
   card.addEventListener('mousedown', startPress);
   card.addEventListener('mousemove', movePress);
   card.addEventListener('mouseup', endPress);
   card.addEventListener('mouseleave', cancelPress);
 }
 
-// ---------- Hero Card ----------
 window.createHeroCard = function(movie) {
   const card = document.createElement('div');
   card.className = 'hero-card';
@@ -100,14 +95,12 @@ window.createHeroCard = function(movie) {
     <div class="card-year">${year}</div>
     <div class="card-rating">⭐ ${rating}</div>
   `;
-  // Click handler for details
   card.addEventListener('click', (e) => {
     e.stopPropagation();
     const id = card.dataset.id;
     const type = card.dataset.type;
     if (id && type) window.showItemDetails(id, type);
   });
-  // Long press handler
   attachLongPress(card, () => {
     const id = card.dataset.id;
     const type = card.dataset.type;
@@ -118,7 +111,6 @@ window.createHeroCard = function(movie) {
   return card;
 };
 
-// ---------- Small Card (for rows, search, discover) ----------
 window.createSmallCard = function(item, explicitType) {
   const card = document.createElement('div');
   card.className = 'card-sm';
@@ -138,14 +130,12 @@ window.createSmallCard = function(item, explicitType) {
     </div>
     <div class="title">${title}</div>
   `;
-  // Click handler for details
   card.addEventListener('click', (e) => {
     e.stopPropagation();
     const id = card.dataset.id;
     const type = card.dataset.type;
     if (id && type) window.showItemDetails(id, type);
   });
-  // Long press handler
   attachLongPress(card, () => {
     const id = card.dataset.id;
     const title = card.querySelector('.title')?.textContent || '';
@@ -155,7 +145,6 @@ window.createSmallCard = function(item, explicitType) {
   return card;
 };
 
-// ---------- Watchlist Card (with remove button) ----------
 window.createWatchlistCard = function(item, onRemove) {
   const card = document.createElement('div');
   card.className = 'card-sm';
@@ -174,6 +163,7 @@ window.createWatchlistCard = function(item, onRemove) {
   ratingBadge.className = 'rating-badge';
   ratingBadge.textContent = rating;
   posterContainer.appendChild(ratingBadge);
+  
   if (onRemove && item.docId) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
@@ -186,19 +176,19 @@ window.createWatchlistCard = function(item, onRemove) {
     });
     posterContainer.appendChild(removeBtn);
   }
+  
   card.appendChild(posterContainer);
   const titleDiv = document.createElement('div');
   titleDiv.className = 'title';
   titleDiv.textContent = item.title;
   card.appendChild(titleDiv);
-  // Click handler for details
+  
   card.addEventListener('click', (e) => {
     e.stopPropagation();
     const id = card.dataset.id;
     const type = card.dataset.type;
     if (id && type) window.showItemDetails(id, type);
   });
-  // Long press handler
   attachLongPress(card, () => {
     const id = card.dataset.id;
     const title = card.querySelector('.title')?.textContent || '';
@@ -208,7 +198,6 @@ window.createWatchlistCard = function(item, onRemove) {
   return card;
 };
 
-// ---------- Drag Scroll for Hero Carousel ----------
 window.enableDragScroll = function(container) {
   let isDown = false, startX, scrollLeft;
   container.addEventListener('mousedown', (e) => {
@@ -255,7 +244,6 @@ window.centerFirstHeroCard = function(container) {
   container.scrollLeft = (containerWidth / 2) - (cardWidth / 2) - (gap / 2);
 };
 
-// ---------- Dropdown Initialization (global) ----------
 function initCustomDropdowns() {
   document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
     const selected = dropdown.querySelector('.dropdown-selected');

@@ -1,7 +1,6 @@
-// app.js – Optimized with localStorage caching, parallel API calls, reduced loader, smooth infinite scroll
+// js/app.js – No changes, but provided for completeness (global loader removed)
 import { addToWatchlist, removeFromWatchlist, getItemsByStatusAndCategory } from './watchlist.js';
 
-// ---------- GLOBAL STATE ----------
 let currentStatus = 'plan';
 let currentExpandedCategory = null;
 let currentItem = null;
@@ -12,37 +11,13 @@ let activeToast = null;
 let scrollThrottleTimer = null;
 let deferredPrompt = null;
 
-// Cache TTL (1 hour)
 const CACHE_TTL = 60 * 60 * 1000;
-
-// ---------- LOADER & SKELETON ----------
-let globalLoader = null;
-
-function showGlobalLoader() {
-  if (!globalLoader) {
-    globalLoader = document.createElement('div');
-    globalLoader.className = 'global-loader';
-    globalLoader.innerHTML = '<div class="loader-spinner"></div><div class="loader-text">Loading...</div>';
-    document.body.appendChild(globalLoader);
-  }
-  globalLoader.classList.remove('hide');
-}
-
-function hideGlobalLoader() {
-  if (globalLoader) {
-    globalLoader.classList.add('hide');
-    setTimeout(() => {
-      if (globalLoader && globalLoader.parentNode) globalLoader.remove();
-    }, 300);
-  }
-}
 
 function showHomeSkeleton() {
   const hero = document.getElementById('heroCarousel');
   const trending = document.getElementById('trendingScroll');
   const popular = document.getElementById('popularScroll');
   const topRated = document.getElementById('topRatedScroll');
-
   if (hero) hero.innerHTML = '<div class="skeleton-card" style="width:70vw; max-width:260px; margin:12px auto;"></div>';
   const addSkeletonRow = (container) => {
     if (!container) return;
@@ -75,7 +50,6 @@ function showWatchlistSkeleton() {
   container.innerHTML = '<div class="loading-spinner">Loading...</div>';
 }
 
-// ---------- CACHE HELPERS ----------
 function getCachedData(key) {
   const cached = localStorage.getItem(key);
   if (!cached) return null;
@@ -91,7 +65,6 @@ function setCachedData(key, data) {
   localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
 }
 
-// ---------- TOAST SYSTEM ----------
 function showToast(msg, type = 'success') {
   if (activeToast) {
     activeToast.classList.remove('show');
@@ -121,7 +94,6 @@ function createToast(msg, type) {
   }, 2000);
 }
 
-// ---------- THEME SYSTEM ----------
 function initTheme() {
   const savedTheme = localStorage.getItem('orvion-theme') || 'dark';
   const savedColor = localStorage.getItem('orvion-color') || 'purple';
@@ -199,19 +171,16 @@ function showThemeSettings() {
   modal.classList.add('show');
 }
 
-// ---------- MODALS ----------
 function initModals() {
   const cancelBtn = document.getElementById('modalCancel');
   const saveBtn = document.getElementById('modalSave');
   const closeDetailsBtn = document.getElementById('closeDetails');
   const detailsModal = document.getElementById('detailsModal');
   const detailsAddBtn = document.getElementById('detailsAddBtn');
-
   if (cancelBtn) {
     cancelBtn.removeEventListener('click', hideAddModal);
     cancelBtn.addEventListener('click', hideAddModal);
   }
-
   if (saveBtn) {
     const newSaveBtn = saveBtn.cloneNode(true);
     saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
@@ -241,7 +210,6 @@ function initModals() {
       hideAddModal();
     });
   }
-
   if (closeDetailsBtn) {
     closeDetailsBtn.removeEventListener('click', hideDetailsModal);
     closeDetailsBtn.addEventListener('click', hideDetailsModal);
@@ -269,23 +237,17 @@ function detailsAddHandler() {
   showAddModal(currentAddItem);
 }
 
-// ---------- HOME LOGIC (with caching) ----------
 async function loadHome() {
   const heroContainer = document.getElementById('heroCarousel');
   const trendingScroll = document.getElementById('trendingScroll');
   const popularScroll = document.getElementById('popularScroll');
   const topRatedScroll = document.getElementById('topRatedScroll');
-
   if (!heroContainer) return;
-
   try {
-    // Try cached data first
     let trendingData = getCachedData('trending');
     let popularData = getCachedData('popular');
     let topRatedData = getCachedData('topRated');
-
     if (!trendingData || !popularData || !topRatedData) {
-      // Fetch all in parallel
       const [trendingRes, popularRes, topRatedRes] = await Promise.all([
         window.fetchTrending().catch(err => { console.error("Trending fetch failed:", err); return { results: [], total_pages: 1 }; }),
         window.fetchPopular().catch(err => { console.error("Popular fetch failed:", err); return { results: [], total_pages: 1 }; }),
@@ -298,31 +260,25 @@ async function loadHome() {
       setCachedData('popular', popularData);
       setCachedData('topRated', topRatedData);
     }
-
     const trendingMovies = trendingData.results || [];
     const popularMovies = popularData.results || [];
     const topRatedMovies = topRatedData.results || [];
-
     const allMovies = [...trendingMovies, ...popularMovies, ...topRatedMovies];
     if (allMovies.length === 0) {
       heroContainer.innerHTML = '<div class="empty-message">No movies available</div>';
       return;
     }
-
     const shuffled = allMovies.sort(() => 0.5 - Math.random());
     const heroMovies = shuffled.slice(0, 10);
-
     heroContainer.innerHTML = '';
     heroMovies.forEach(movie => {
       if (movie && movie.id) heroContainer.appendChild(window.createHeroCard(movie));
     });
-
     setTimeout(() => window.centerFirstHeroCard(heroContainer), 100);
     const firstCard = heroContainer.querySelector('.hero-card');
     if (firstCard) firstCard.classList.add('active');
     window.enableDragScroll(heroContainer);
     window.observeHeroCards(heroContainer);
-
     if (autoSlideInterval) clearInterval(autoSlideInterval);
     autoSlideInterval = setInterval(() => {
       const activeCard = heroContainer.querySelector('.hero-card.active');
@@ -341,7 +297,6 @@ async function loadHome() {
     };
     heroContainer.addEventListener('touchstart', stopSlide, { once: true });
     heroContainer.addEventListener('mousedown', stopSlide, { once: true });
-
     [trendingScroll, popularScroll, topRatedScroll].forEach(el => { if (el) el.style.opacity = '0'; });
     trendingScroll.innerHTML = '';
     popularScroll.innerHTML = '';
@@ -363,7 +318,6 @@ async function loadHome() {
   }
 }
 
-// ---------- DISCOVER LOGIC (with caching for first page) ----------
 let discoverIndicator = null;
 let currentDiscoverType = 'movie';
 let discoverPage = 1;
@@ -373,30 +327,25 @@ let discoverHasMore = true;
 function initDiscoverTabs() {
   const tabsContainer = document.querySelector('.discover-tabs');
   if (!tabsContainer) return;
-
   if (!discoverIndicator) {
     discoverIndicator = document.createElement('div');
     discoverIndicator.className = 'tab-indicator';
     tabsContainer.appendChild(discoverIndicator);
   }
-
   const tabs = tabsContainer.querySelectorAll('.tab-btn');
   function updateIndicator(activeTab) {
     if (!discoverIndicator) return;
     discoverIndicator.style.transform = `translateX(${activeTab.offsetLeft}px)`;
     discoverIndicator.style.width = `${activeTab.offsetWidth}px`;
   }
-
   setTimeout(() => {
     const active = tabsContainer.querySelector('.tab-btn.active');
     if (active) updateIndicator(active);
   }, 10);
-
   tabs.forEach(tab => {
     tab.removeEventListener('click', tabClickHandler);
     tab.addEventListener('click', tabClickHandler);
   });
-
   async function tabClickHandler(e) {
     const tab = e.currentTarget;
     if (tab.classList.contains('active')) return;
@@ -406,7 +355,6 @@ function initDiscoverTabs() {
     currentDiscoverType = tab.dataset.type;
     await loadDiscoverData(currentDiscoverType, true);
   }
-
   window.addEventListener('resize', () => {
     const active = tabsContainer.querySelector('.tab-btn.active');
     if (active) updateIndicator(active);
@@ -421,7 +369,6 @@ async function loadDiscoverData(type, reset = true) {
     currentDiscoverType = type;
     const grid = document.getElementById('discoverGrid');
     if (grid) grid.innerHTML = '';
-    // Try cache only for first page
     const cacheKey = `discover_${type}_page1`;
     const cached = getCachedData(cacheKey);
     if (cached && cached.results && cached.results.length) {
@@ -475,7 +422,6 @@ function showDiscoverEmpty() {
   }
 }
 
-// ---------- WATCHLIST LOGIC (no caching needed, already fast) ----------
 function initWatchlistTabs() {
   const tabsContainer = document.querySelector('.watchlist-tabs');
   if (!tabsContainer) return;
@@ -609,7 +555,6 @@ function closeExpandedView() {
   currentExpandedCategory = null;
 }
 
-// ---------- DETAILS MODAL ----------
 async function showItemDetails(id, type) {
   if (isOpeningModal) return;
   isOpeningModal = true;
@@ -696,7 +641,6 @@ function hideDetailsModal() {
   currentItem = null;
 }
 
-// ---------- ADD MODAL ----------
 function showAddModal(item) {
   currentAddItem = item;
   document.body.classList.add('modal-open');
@@ -708,7 +652,6 @@ function hideAddModal() {
   currentAddItem = null;
 }
 
-// ---------- INFINITE SCROLL (optimized, no duplicate) ----------
 let scrollHandlerActive = true;
 function handleScroll() {
   if (!scrollHandlerActive) return;
@@ -728,7 +671,6 @@ function handleScroll() {
 }
 window.addEventListener('scroll', handleScroll);
 
-// ---------- INSTALL PROMPT ----------
 function initInstallPrompt() {
   const installBtn = document.getElementById('installAppBtn');
   if (!installBtn) return;
@@ -748,16 +690,11 @@ function initInstallPrompt() {
   });
 }
 
-// ---------- SINGLE INIT FUNCTION (with global loader only on first load) ----------
-let isFirstLoad = true;
-
 async function initApp() {
-  if (isFirstLoad) showGlobalLoader();
   initTheme();
   if (typeof initCustomDropdowns === 'function') initCustomDropdowns();
   initModals();
   initInstallPrompt();
-
   const bodyClass = document.body.classList;
   if (bodyClass.contains('home-page')) {
     showHomeSkeleton();
@@ -775,23 +712,9 @@ async function initApp() {
     if (typeof initSearch === 'function') initSearch();
     if (typeof initSearchHistory === 'function') initSearchHistory();
   }
-
   const themeBtn = document.getElementById('themeToggleBtn');
   if (themeBtn) themeBtn.removeEventListener('click', showThemeSettings);
   if (themeBtn) themeBtn.addEventListener('click', showThemeSettings);
-
-  if (isFirstLoad) {
-    isFirstLoad = false;
-    // Wait for images to load (optional, but helps)
-    const images = document.querySelectorAll('img');
-    if (images.length) {
-      await Promise.all(Array.from(images).map(img => new Promise(resolve => {
-        if (img.complete) resolve();
-        else { img.onload = resolve; img.onerror = resolve; }
-      })));
-    }
-    hideGlobalLoader();
-  }
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
