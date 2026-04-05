@@ -1,9 +1,25 @@
-// js/ui.js - Complete, with proper click handling and type propagation
-
+// js/ui.js – Complete with long press detection for search results and all cards
 const observers = [];
 
-// ---------- Helper: Only long-press (no click interference) ----------
-function attachLongPressOnly(card) {
+// ---------- PREMIUM REMOVE BUTTON (SVG) ----------
+function attachRipple(button) {
+  button.addEventListener('click', function(e) {
+    const x = e.clientX - e.target.offsetLeft;
+    const y = e.clientY - e.target.offsetTop;
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    ripple.style.left = `${x}px`;
+    ripple.style.top = `${y}px`;
+    this.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  });
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.btn').forEach(attachRipple);
+});
+
+// ---------- LONG PRESS DETECTION (shared) ----------
+function attachLongPress(card, onLongPress) {
   let pressTimer = null;
   let longPressTriggered = false;
   let startX = 0, startY = 0;
@@ -17,105 +33,55 @@ function attachLongPressOnly(card) {
     longPressTriggered = false;
   };
 
-  const handleTouchStart = (e) => {
+  const startPress = (e) => {
     if (e.target.closest('.remove-btn')) return;
-    const touch = e.touches[0];
-    startX = touch.clientX;
-    startY = touch.clientY;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    startX = clientX;
+    startY = clientY;
     isScrolling = false;
     longPressTriggered = false;
-
     pressTimer = setTimeout(() => {
       longPressTriggered = true;
       if (navigator.vibrate) navigator.vibrate(30);
-      const id = card.dataset.id;
-      const type = card.dataset.type;
-      const title = card.querySelector('.card-title')?.textContent || card.querySelector('.title')?.textContent || '';
-      const poster = card.querySelector('img')?.src || '';
-      const item = { id: Number(id), title, poster };
-      window.showAddModal(item);
+      onLongPress();
     }, 500);
   };
 
-  const handleTouchMove = (e) => {
+  const movePress = (e) => {
     if (!pressTimer) return;
-    const touch = e.touches[0];
-    const deltaX = Math.abs(touch.clientX - startX);
-    const deltaY = Math.abs(touch.clientY - startY);
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const deltaX = Math.abs(clientX - startX);
+    const deltaY = Math.abs(clientY - startY);
     if (deltaX > 8 || deltaY > 8) {
       isScrolling = true;
       cancelPress();
     }
   };
 
-  const handleTouchEnd = (e) => {
-    if (e.target.closest('.remove-btn')) return;
+  const endPress = (e) => {
     if (pressTimer) {
       clearTimeout(pressTimer);
       pressTimer = null;
     }
-    longPressTriggered = false;
-    isScrolling = false;
-  };
-
-  const handleTouchCancel = () => {
-    cancelPress();
-    isScrolling = false;
-  };
-
-  const handleMouseDown = (e) => {
-    if (e.target.closest('.remove-btn')) return;
-    startX = e.clientX;
-    startY = e.clientY;
-    isScrolling = false;
-    longPressTriggered = false;
-
-    pressTimer = setTimeout(() => {
-      longPressTriggered = true;
-      if (navigator.vibrate) navigator.vibrate(30);
-      const id = card.dataset.id;
-      const type = card.dataset.type;
-      const title = card.querySelector('.card-title')?.textContent || card.querySelector('.title')?.textContent || '';
-      const poster = card.querySelector('img')?.src || '';
-      const item = { id: Number(id), title, poster };
-      window.showAddModal(item);
-    }, 500);
-  };
-
-  const handleMouseMove = (e) => {
-    if (!pressTimer) return;
-    const deltaX = Math.abs(e.clientX - startX);
-    const deltaY = Math.abs(e.clientY - startY);
-    if (deltaX > 8 || deltaY > 8) {
-      isScrolling = true;
-      cancelPress();
+    if (longPressTriggered) {
+      longPressTriggered = false;
+      e.stopPropagation();
     }
-  };
-
-  const handleMouseUp = (e) => {
-    if (e.target.closest('.remove-btn')) return;
-    if (pressTimer) {
-      clearTimeout(pressTimer);
-      pressTimer = null;
-    }
-    longPressTriggered = false;
     isScrolling = false;
   };
 
-  const handleMouseLeave = () => {
-    cancelPress();
-    isScrolling = false;
-  };
-
-  card.addEventListener('touchstart', handleTouchStart, { passive: true });
-  card.addEventListener('touchmove', handleTouchMove, { passive: true });
-  card.addEventListener('touchend', handleTouchEnd, { passive: true });
-  card.addEventListener('touchcancel', handleTouchCancel, { passive: true });
-
-  card.addEventListener('mousedown', handleMouseDown);
-  card.addEventListener('mousemove', handleMouseMove);
-  card.addEventListener('mouseup', handleMouseUp);
-  card.addEventListener('mouseleave', handleMouseLeave);
+  // Touch events
+  card.addEventListener('touchstart', startPress, { passive: true });
+  card.addEventListener('touchmove', movePress, { passive: true });
+  card.addEventListener('touchend', endPress);
+  card.addEventListener('touchcancel', cancelPress);
+  // Mouse events
+  card.addEventListener('mousedown', startPress);
+  card.addEventListener('mousemove', movePress);
+  card.addEventListener('mouseup', endPress);
+  card.addEventListener('mouseleave', cancelPress);
 }
 
 // ---------- Hero Card ----------
@@ -124,16 +90,11 @@ window.createHeroCard = function(movie) {
   card.className = 'hero-card';
   card.dataset.id = movie.id;
   card.dataset.type = 'movie';
-  
-  const posterUrl = movie.poster_path ? window.IMG_BASE + movie.poster_path : null;
-  const poster = posterUrl || 'https://via.placeholder.com/300x450?text=No+Image';
+  const poster = movie.poster_path ? window.IMG_BASE + movie.poster_path : 'https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Image';
   const year = movie.release_date ? movie.release_date.split('-')[0] : 'N/A';
   const rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'NR';
-  
   card.innerHTML = `
-    <div class="poster-container">
-      <img src="${poster}" alt="${movie.title}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450?text=No+Image'">
-    </div>
+    <div class="poster-container"><img src="${poster}" alt="${movie.title}" loading="lazy" onerror="this.src='https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Image'"></div>
     <div class="card-gradient"></div>
     <div class="card-title">${movie.title}</div>
     <div class="card-year">${year}</div>
@@ -146,7 +107,14 @@ window.createHeroCard = function(movie) {
     const type = card.dataset.type;
     if (id && type) window.showItemDetails(id, type);
   });
-  attachLongPressOnly(card);
+  // Long press handler
+  attachLongPress(card, () => {
+    const id = card.dataset.id;
+    const type = card.dataset.type;
+    const title = card.querySelector('.card-title')?.textContent || '';
+    const poster = card.querySelector('img')?.src || '';
+    window.showAddModal({ id: Number(id), title, poster });
+  });
   return card;
 };
 
@@ -155,21 +123,17 @@ window.createSmallCard = function(item, explicitType) {
   const card = document.createElement('div');
   card.className = 'card-sm';
   card.dataset.id = item.id;
-  // Determine type: if explicitType provided, use it; otherwise infer from media_type or title
   let type = explicitType;
   if (!type) {
-    if (item.media_type === 'tv') type = 'tv';
-    else if (item.media_type === 'movie') type = 'movie';
-    else type = item.title ? 'movie' : 'tv';
+    type = item.media_type === 'tv' ? 'tv' : (item.title ? 'movie' : 'tv');
   }
   card.dataset.type = type;
-  const posterUrl = item.poster_path ? window.IMG_BASE + item.poster_path : null;
-  const poster = posterUrl || 'https://via.placeholder.com/140x210?text=No+Image';
+  const poster = item.poster_path ? window.IMG_BASE + item.poster_path : 'https://dummyimage.com/140x210/1e1e1e/aaa?text=No+Image';
   const title = item.title || item.name || 'Untitled';
   const rating = item.vote_average ? item.vote_average.toFixed(1) : 'NR';
   card.innerHTML = `
     <div class="poster-container">
-      <img src="${poster}" alt="${title}" loading="lazy" onerror="this.src='https://via.placeholder.com/140x210?text=No+Image'">
+      <img src="${poster}" alt="${title}" loading="lazy" onerror="this.src='https://dummyimage.com/140x210/1e1e1e/aaa?text=No+Image'">
       <div class="rating-badge">⭐ ${rating}</div>
     </div>
     <div class="title">${title}</div>
@@ -181,20 +145,24 @@ window.createSmallCard = function(item, explicitType) {
     const type = card.dataset.type;
     if (id && type) window.showItemDetails(id, type);
   });
-  attachLongPressOnly(card);
+  // Long press handler
+  attachLongPress(card, () => {
+    const id = card.dataset.id;
+    const title = card.querySelector('.title')?.textContent || '';
+    const poster = card.querySelector('img')?.src || '';
+    window.showAddModal({ id: Number(id), title, poster });
+  });
   return card;
 };
 
-// ---------- Watchlist Card ----------
+// ---------- Watchlist Card (with remove button) ----------
 window.createWatchlistCard = function(item, onRemove) {
   const card = document.createElement('div');
   card.className = 'card-sm';
   card.dataset.id = item.id;
-  const type = item.category === 'movie' ? 'movie' : 'tv';
-  card.dataset.type = type;
-  const poster = item.poster || 'https://via.placeholder.com/140x210?text=No+Image';
+  card.dataset.type = item.category === 'movie' ? 'movie' : 'tv';
+  const poster = item.poster || 'https://dummyimage.com/140x210/1e1e1e/aaa?text=No+Image';
   const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}` : '';
-  
   const posterContainer = document.createElement('div');
   posterContainer.className = 'poster-container';
   const img = document.createElement('img');
@@ -202,21 +170,14 @@ window.createWatchlistCard = function(item, onRemove) {
   img.alt = item.title;
   img.loading = 'lazy';
   posterContainer.appendChild(img);
-  
   const ratingBadge = document.createElement('div');
   ratingBadge.className = 'rating-badge';
   ratingBadge.textContent = rating;
   posterContainer.appendChild(ratingBadge);
-  
   if (onRemove && item.docId) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
-    removeBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-      </svg>
-    `;
+    removeBtn.innerHTML = `<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeBtn.style.transform = 'scale(0.92)';
@@ -225,14 +186,11 @@ window.createWatchlistCard = function(item, onRemove) {
     });
     posterContainer.appendChild(removeBtn);
   }
-  
   card.appendChild(posterContainer);
-  
   const titleDiv = document.createElement('div');
   titleDiv.className = 'title';
   titleDiv.textContent = item.title;
   card.appendChild(titleDiv);
-  
   // Click handler for details
   card.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -240,7 +198,13 @@ window.createWatchlistCard = function(item, onRemove) {
     const type = card.dataset.type;
     if (id && type) window.showItemDetails(id, type);
   });
-  attachLongPressOnly(card);
+  // Long press handler
+  attachLongPress(card, () => {
+    const id = card.dataset.id;
+    const title = card.querySelector('.title')?.textContent || '';
+    const poster = card.querySelector('img')?.src || '';
+    window.showAddModal({ id: Number(id), title, poster });
+  });
   return card;
 };
 
@@ -291,28 +255,20 @@ window.centerFirstHeroCard = function(container) {
   container.scrollLeft = (containerWidth / 2) - (cardWidth / 2) - (gap / 2);
 };
 
-// ---------- Dropdown Initialization ----------
+// ---------- Dropdown Initialization (global) ----------
 function initCustomDropdowns() {
   document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
     const selected = dropdown.querySelector('.dropdown-selected');
     const options = dropdown.querySelectorAll('.dropdown-option');
-
     if (!dropdown.querySelector('.dropdown-option.selected')) {
       const first = options[0];
-      if (first) {
-        first.classList.add('selected');
-        selected.textContent = first.textContent;
-      }
+      if (first) { first.classList.add('selected'); selected.textContent = first.textContent; }
     }
-
     selected.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      document.querySelectorAll('.custom-dropdown.open').forEach(d => {
-        if (d !== dropdown) d.classList.remove('open');
-      });
+      document.querySelectorAll('.custom-dropdown.open').forEach(d => { if (d !== dropdown) d.classList.remove('open'); });
       dropdown.classList.toggle('open');
     });
-
     options.forEach(opt => {
       opt.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
@@ -323,7 +279,6 @@ function initCustomDropdowns() {
       });
     });
   });
-
   document.addEventListener('pointerdown', (e) => {
     if (!e.target.closest('.custom-dropdown')) {
       document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
