@@ -1,3 +1,4 @@
+/* style.css – consistent tabs, fixed UI, stable fallback images */
 * {
   margin: 0;
   padding: 0;
@@ -17,7 +18,78 @@ body {
   min-height: 100vh;
 }
 
-/* ---------- FLOATING BOTTOM NAV ---------- */
+/* ---------- GLOBAL LOADER ---------- */
+.global-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #0a0a0a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  pointer-events: none;
+}
+.global-loader.hide {
+  opacity: 0;
+  visibility: hidden;
+}
+.loader-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(124, 58, 237, 0.2);
+  border-top: 4px solid #7c3aed;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loader-text {
+  margin-top: 16px;
+  color: #aaa;
+  font-size: 0.9rem;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- SKELETON ---------- */
+.skeleton-card {
+  flex: 0 0 130px;
+  aspect-ratio: 2/3;
+  border-radius: 18px;
+  background: linear-gradient(110deg, #1e1e1e 8%, #2a2a2a 18%, #1e1e1e 33%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+@keyframes shimmer {
+  to { background-position: -200% 0; }
+}
+
+/* ---------- MODERN EMPTY STATES ---------- */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #aaa;
+}
+.empty-state svg, .empty-state p:first-child {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+.empty-state p {
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: #ccc;
+}
+.empty-state span {
+  font-size: 0.9rem;
+  color: #888;
+}
+
+/* ---------- BOTTOM NAV ---------- */
 .bottom-nav {
   position: fixed;
   bottom: 16px;
@@ -28,7 +100,6 @@ body {
   align-items: center;
   background: rgba(18, 18, 18, 0.8);
   backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 40px;
   padding: 8px 16px;
@@ -72,7 +143,7 @@ h2 {
   color: #fff;
 }
 
-/* ---------- HERO CAROUSEL ---------- */
+/* ---------- HERO CAROUSEL (unchanged) ---------- */
 .hero {
   margin: 8px 0 8px;
   overflow: visible;
@@ -179,7 +250,7 @@ h2 {
   pointer-events: none;
 }
 
-/* ---------- MOVIE CARD (global) ---------- */
+/* ---------- MOVIE CARD ---------- */
 .card-sm {
   flex: 0 0 130px;
   scroll-snap-align: start;
@@ -248,7 +319,6 @@ h2 {
   pointer-events: none;
 }
 
-/* Horizontal scroll rows */
 .horizontal-scroll {
   display: flex;
   overflow-x: auto;
@@ -260,7 +330,7 @@ h2 {
 }
 .horizontal-scroll::-webkit-scrollbar { display: none; }
 
-/* ---------- SEARCH PAGE ---------- */
+/* ---------- SEARCH (unchanged) ---------- */
 .search-header {
   padding: 20px 16px 8px;
   position: relative;
@@ -268,7 +338,7 @@ h2 {
 .search-container {
   display: flex;
   align-items: center;
-  background: rgba(30, 30, 30, 0.8);
+  background: rgba(30,30,30,0.8);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255,255,255,0.05);
   border-radius: 32px;
@@ -361,13 +431,14 @@ h2 {
   padding: 16px;
 }
 
-/* ---------- DISCOVER PAGE ---------- */
+/* ---------- DISCOVER TABS (consistent with watchlist) ---------- */
 .discover-tabs {
   display: flex;
+  position: relative;
   background: rgba(30,30,30,0.8);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(12px);
   border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 40px;
+  border-radius: 20px;
   padding: 4px;
   margin: 16px;
 }
@@ -376,16 +447,27 @@ h2 {
   background: transparent;
   border: none;
   color: #888;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 500;
   padding: 10px 0;
   cursor: pointer;
-  border-radius: 40px;
-  transition: color 0.2s, background 0.2s;
+  border-radius: 16px;
+  transition: color 0.2s;
+  position: relative;
+  z-index: 1;
 }
 .discover-tabs .tab-btn.active {
-  color: #7c3aed;
-  background: rgba(124,58,237,0.1);
+  color: white;
+}
+.discover-tabs .tab-indicator {
+  position: absolute;
+  height: calc(100% - 8px);
+  top: 4px;
+  left: 4px;
+  background: rgba(124,58,237,0.2);
+  border-radius: 16px;
+  transition: transform 0.3s ease, width 0.3s ease;
+  z-index: 0;
 }
 .discover-grid {
   display: grid;
@@ -412,8 +494,25 @@ h2 {
   flex: none;
   width: 100%;
 }
+.loading-spinner {
+  text-align: center;
+  padding: 30px;
+  color: #aaa;
+  grid-column: 1 / -1;
+}
+.loading-spinner::after {
+  content: '';
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin: 10px auto;
+  border: 3px solid #333;
+  border-top-color: #7c3aed;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 
-/* ---------- WATCHLIST (normal) ---------- */
+/* ---------- WATCHLIST TABS (same as discover) ---------- */
 .watchlist-tabs-container {
   padding: 16px 16px 8px;
 }
@@ -527,9 +626,9 @@ h2 {
   z-index: 5;
 }
 .back-btn {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255,255,255,0.05);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 50%;
   width: 44px;
   height: 44px;
@@ -546,7 +645,7 @@ h2 {
   height: 20px;
 }
 .back-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255,255,255,0.15);
   transform: scale(1.05);
 }
 .expanded-header h2 {
@@ -580,26 +679,7 @@ h2 {
   flex: none;
 }
 
-/* ---------- EMPTY WATCHLIST STATE ---------- */
-.empty-watchlist {
-  text-align: center;
-  padding: 60px 20px;
-  color: #888;
-}
-.empty-watchlist svg {
-  width: 48px;
-  height: 48px;
-  stroke: #555;
-  margin-bottom: 16px;
-  opacity: 0.6;
-}
-.empty-watchlist p {
-  font-size: 1rem;
-  font-weight: 400;
-  color: #777;
-}
-
-/* ---------- MODALS ---------- */
+/* ---------- MODALS (unchanged) ---------- */
 body.modal-open {
   overflow: hidden;
 }
@@ -635,11 +715,10 @@ body.modal-open {
   transform: scale(1);
 }
 
-/* Add modal */
 #addModal .modal-content.add-modal-content {
-  background: rgba(20, 20, 20, 0.65);
+  background: rgba(20,20,20,0.65);
   backdrop-filter: blur(25px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 32px;
   width: 320px;
   max-width: 90%;
@@ -669,7 +748,7 @@ body.modal-open {
   margin-bottom: 6px;
 }
 #addModal .modal-header .modal-subtitle {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255,255,255,0.6);
   font-size: 0.85rem;
 }
 #addModal .input-group {
@@ -680,7 +759,7 @@ body.modal-open {
   margin-bottom: 8px;
   font-size: 0.7rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255,255,255,0.7);
   letter-spacing: 0.3px;
   text-transform: uppercase;
 }
@@ -689,8 +768,8 @@ body.modal-open {
   cursor: pointer;
 }
 #addModal .dropdown-selected {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 18px;
   padding: 16px 18px;
   color: white;
@@ -702,8 +781,8 @@ body.modal-open {
   justify-content: space-between;
 }
 #addModal .dropdown-selected:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.15);
 }
 #addModal .dropdown-selected::after {
   content: '';
@@ -721,9 +800,9 @@ body.modal-open {
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  background: rgba(20, 20, 20, 0.92);
+  background: rgba(20,20,20,0.92);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 18px;
   padding: 8px;
   z-index: 10;
@@ -731,7 +810,7 @@ body.modal-open {
   transform: translateY(-10px) scale(0.98);
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
 }
 #addModal .custom-dropdown.open .dropdown-options {
   opacity: 1;
@@ -785,26 +864,25 @@ body.modal-open {
   transform: scale(0.96);
 }
 #addModal .btn.glass-btn {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255,255,255,0.05);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255,255,255,0.1);
   color: white;
 }
 #addModal .btn.glass-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255,255,255,0.12);
 }
 #addModal .btn.accent-btn {
   background: linear-gradient(135deg, #7c3aed, #a855f7);
   color: white;
-  box-shadow: 0 8px 20px rgba(124, 58, 237, 0.4);
+  box-shadow: 0 8px 20px rgba(124,58,237,0.4);
 }
 #addModal .btn.accent-btn:hover {
   background: linear-gradient(135deg, #8b5cf6, #b86efc);
-  box-shadow: 0 12px 25px rgba(124, 58, 237, 0.5);
+  box-shadow: 0 12px 25px rgba(124,58,237,0.5);
   transform: translateY(-1px);
 }
 
-/* ---------- DETAILS MODAL (hidden scrollbar) ---------- */
 .details-modal {
   width: 90%;
   max-width: 500px;
@@ -863,11 +941,11 @@ body.modal-open {
   padding: 24px;
   overflow-y: auto;
   max-height: calc(85vh - 48px);
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .details-content::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+  display: none;
 }
 .details-poster {
   flex-shrink: 0;
@@ -1009,7 +1087,6 @@ body.modal-open {
   }
 }
 
-/* ---------- TOAST ---------- */
 .toast {
   position: fixed;
   bottom: 100px;
@@ -1034,29 +1111,6 @@ body.modal-open {
 .toast.success { background: #1e3a2e; border-color: #2a7a3b; }
 .toast.error { background: #3e1e1e; border-color: #a13a3a; }
 
-/* ---------- LOADING SPINNER ---------- */
-.loading-spinner {
-  text-align: center;
-  padding: 30px;
-  color: #aaa;
-  grid-column: 1 / -1;
-}
-.loading-spinner::after {
-  content: '';
-  display: block;
-  width: 30px;
-  height: 30px;
-  margin: 10px auto;
-  border: 3px solid #333;
-  border-top-color: #7c3aed;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ---------- EMPTY MESSAGE ---------- */
 .empty-message {
   text-align: center;
   padding: 40px 20px;
@@ -1066,7 +1120,6 @@ body.modal-open {
   margin: 20px;
 }
 
-/* ---------- IMAGE DRAG PREVENTION & TAP FEEDBACK ---------- */
 img {
   -webkit-user-drag: none;
   -khtml-user-drag: none;
@@ -1082,146 +1135,4 @@ img {
 .watchlist-card:active {
   transform: scale(0.98);
   transition: transform 0.1s;
-}
-/* Add this to your existing style.css if not already present */
-.remove-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  border: none;
-  color: white;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 14px;
-  z-index: 5;
-  transition: all 0.2s;
-}
-.remove-btn:hover {
-  background: rgba(200, 50, 50, 0.9);
-  transform: scale(1.05);
-}
-/* Add/Replace these styles in your style.css */
-
-/* Premium Small Remove Button */
-.remove-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 10;
-  opacity: 0.7;
-  transition: all 0.2s ease;
-  padding: 0;
-}
-
-/* SVG icon styling */
-.remove-btn svg {
-  width: 14px;
-  height: 14px;
-  stroke: rgba(255, 255, 255, 0.8);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  fill: none;
-  transition: stroke 0.2s, transform 0.2s;
-}
-
-/* Hover effect – subtle red accent */
-.remove-btn:hover {
-  background: rgba(255, 59, 48, 0.18);
-  border-color: rgba(255, 59, 48, 0.3);
-  transform: scale(1.08);
-  opacity: 1;
-  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25);
-}
-.remove-btn:hover svg {
-  stroke: #ff3b30;
-  transform: rotate(90deg);
-}
-
-/* Active / press effect */
-.remove-btn:active {
-  transform: scale(0.92);
-  transition: transform 0.1s;
-}
-
-/* Card hover – make button slightly more visible (optional) */
-.card-sm:hover .remove-btn,
-.watchlist-card:hover .remove-btn {
-  opacity: 0.9;
-}
-
-/* Mobile optimization: slightly larger touch area but same visual size */
-@media (max-width: 768px) {
-  .remove-btn {
-    width: 30px;
-    height: 30px;
-    top: 6px;
-    right: 6px;
-  }
-  .remove-btn svg {
-    width: 16px;
-    height: 16px;
-  }
-  /* Increase clickable area via pseudo-element or padding? We'll rely on larger tap target */
-  .remove-btn::after {
-    content: '';
-    position: absolute;
-    top: -6px;
-    left: -6px;
-    right: -6px;
-    bottom: -6px;
-    border-radius: 50%;
-  }
-}
-
-/* Ensure button appears above image */
-.poster-container {
-  position: relative;
-}
-/* Install button styling */
-.install-btn {
-  position: fixed;
-  bottom: 100px;
-  right: 16px;
-  background: #7c3aed;
-  border: none;
-  border-radius: 40px;
-  padding: 12px 20px;
-  color: white;
-  font-weight: bold;
-  font-size: 14px;
-  z-index: 1000;
-  cursor: pointer;
-  box-shadow: 0 4px 15px rgba(124,58,237,0.4);
-  transition: transform 0.2s, background 0.2s;
-}
-.install-btn:hover {
-  background: #6d28d9;
-  transform: scale(1.02);
-}
-@media (max-width: 768px) {
-  .install-btn {
-    bottom: 80px;
-    right: 12px;
-    padding: 10px 16px;
-    font-size: 12px;
-  }
 }

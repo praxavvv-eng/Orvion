@@ -1,31 +1,125 @@
-// js/app.js – Updated to use new API structure (data.results)
+// app.js – Optimized with localStorage caching, parallel API calls, reduced loader, smooth infinite scroll
 import { addToWatchlist, removeFromWatchlist, getItemsByStatusAndCategory } from './watchlist.js';
 
+// ---------- GLOBAL STATE ----------
 let currentStatus = 'plan';
 let currentExpandedCategory = null;
 let currentItem = null;
 let currentAddItem = null;
 let isOpeningModal = false;
+let autoSlideInterval = null;
+let activeToast = null;
+let scrollThrottleTimer = null;
+let deferredPrompt = null;
 
-document.addEventListener('DOMContentLoaded', async () => {
-  initTheme();
-  if (typeof initCustomDropdowns === 'function') initCustomDropdowns();
-  initModals();
+// Cache TTL (1 hour)
+const CACHE_TTL = 60 * 60 * 1000;
 
-  if (document.body.classList.contains('home-page')) {
-    initHome();
-  } else if (document.body.classList.contains('search-page')) {
-    initSearch();
-    initSearchHistory();
-  } else if (document.body.classList.contains('watchlist-page')) {
-    initWatchlistTabs();
-    await renderWatchlist();
-    setupWatchlistExpandedView();
+// ---------- LOADER & SKELETON ----------
+let globalLoader = null;
+
+function showGlobalLoader() {
+  if (!globalLoader) {
+    globalLoader = document.createElement('div');
+    globalLoader.className = 'global-loader';
+    globalLoader.innerHTML = '<div class="loader-spinner"></div><div class="loader-text">Loading...</div>';
+    document.body.appendChild(globalLoader);
   }
+  globalLoader.classList.remove('hide');
+}
 
-  const themeBtn = document.getElementById('themeToggleBtn');
-  if (themeBtn) themeBtn.addEventListener('click', showThemeSettings);
-});
+function hideGlobalLoader() {
+  if (globalLoader) {
+    globalLoader.classList.add('hide');
+    setTimeout(() => {
+      if (globalLoader && globalLoader.parentNode) globalLoader.remove();
+    }, 300);
+  }
+}
+
+function showHomeSkeleton() {
+  const hero = document.getElementById('heroCarousel');
+  const trending = document.getElementById('trendingScroll');
+  const popular = document.getElementById('popularScroll');
+  const topRated = document.getElementById('topRatedScroll');
+
+  if (hero) hero.innerHTML = '<div class="skeleton-card" style="width:70vw; max-width:260px; margin:12px auto;"></div>';
+  const addSkeletonRow = (container) => {
+    if (!container) return;
+    container.innerHTML = '';
+    for (let i = 0; i < 6; i++) {
+      const sk = document.createElement('div');
+      sk.className = 'skeleton-card';
+      container.appendChild(sk);
+    }
+  };
+  addSkeletonRow(trending);
+  addSkeletonRow(popular);
+  addSkeletonRow(topRated);
+}
+
+function showDiscoverSkeleton() {
+  const grid = document.getElementById('discoverGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (let i = 0; i < 12; i++) {
+    const sk = document.createElement('div');
+    sk.className = 'skeleton-card';
+    grid.appendChild(sk);
+  }
+}
+
+function showWatchlistSkeleton() {
+  const container = document.getElementById('watchlistContent');
+  if (!container) return;
+  container.innerHTML = '<div class="loading-spinner">Loading...</div>';
+}
+
+// ---------- CACHE HELPERS ----------
+function getCachedData(key) {
+  const cached = localStorage.getItem(key);
+  if (!cached) return null;
+  const { data, timestamp } = JSON.parse(cached);
+  if (Date.now() - timestamp > CACHE_TTL) {
+    localStorage.removeItem(key);
+    return null;
+  }
+  return data;
+}
+
+function setCachedData(key, data) {
+  localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+}
+
+// ---------- TOAST SYSTEM ----------
+function showToast(msg, type = 'success') {
+  if (activeToast) {
+    activeToast.classList.remove('show');
+    setTimeout(() => {
+      if (activeToast && activeToast.parentNode) activeToast.remove();
+      activeToast = null;
+      createToast(msg, type);
+    }, 200);
+  } else {
+    createToast(msg, type);
+  }
+}
+
+function createToast(msg, type) {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  activeToast = toast;
+  setTimeout(() => toast.classList.add('show'), 10);
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => {
+      if (toast.parentNode) toast.remove();
+      if (activeToast === toast) activeToast = null;
+    }, 300);
+  }, 2000);
+}
 
 // ---------- THEME SYSTEM ----------
 function initTheme() {
@@ -169,14 +263,14 @@ function detailsAddHandler() {
   currentAddItem = {
     id: currentItem.id,
     title: currentItem.title || currentItem.name,
-    poster: currentItem.poster_path ? window.IMG_BASE + currentItem.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster'
+    poster: currentItem.poster_path ? window.IMG_BASE + currentItem.poster_path : 'https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Poster'
   };
   hideDetailsModal();
   showAddModal(currentAddItem);
 }
 
-// ---------- HOME PAGE (fixed) ----------
-async function initHome() {
+// ---------- HOME LOGIC (with caching) ----------
+async function loadHome() {
   const heroContainer = document.getElementById('heroCarousel');
   const trendingScroll = document.getElementById('trendingScroll');
   const popularScroll = document.getElementById('popularScroll');
@@ -185,10 +279,25 @@ async function initHome() {
   if (!heroContainer) return;
 
   try {
-    // Fetch data – each returns { results, total_pages }
-    const trendingData = await window.fetchTrending().catch(err => { console.error("Trending fetch failed:", err); return { results: [], total_pages: 1 }; });
-    const popularData = await window.fetchPopular().catch(err => { console.error("Popular fetch failed:", err); return { results: [], total_pages: 1 }; });
-    const topRatedData = await window.fetchTopRated().catch(err => { console.error("TopRated fetch failed:", err); return { results: [], total_pages: 1 }; });
+    // Try cached data first
+    let trendingData = getCachedData('trending');
+    let popularData = getCachedData('popular');
+    let topRatedData = getCachedData('topRated');
+
+    if (!trendingData || !popularData || !topRatedData) {
+      // Fetch all in parallel
+      const [trendingRes, popularRes, topRatedRes] = await Promise.all([
+        window.fetchTrending().catch(err => { console.error("Trending fetch failed:", err); return { results: [], total_pages: 1 }; }),
+        window.fetchPopular().catch(err => { console.error("Popular fetch failed:", err); return { results: [], total_pages: 1 }; }),
+        window.fetchTopRated().catch(err => { console.error("TopRated fetch failed:", err); return { results: [], total_pages: 1 }; })
+      ]);
+      trendingData = trendingRes;
+      popularData = popularRes;
+      topRatedData = topRatedRes;
+      setCachedData('trending', trendingData);
+      setCachedData('popular', popularData);
+      setCachedData('topRated', topRatedData);
+    }
 
     const trendingMovies = trendingData.results || [];
     const popularMovies = popularData.results || [];
@@ -205,9 +314,7 @@ async function initHome() {
 
     heroContainer.innerHTML = '';
     heroMovies.forEach(movie => {
-      if (movie && movie.id) {
-        heroContainer.appendChild(window.createHeroCard(movie));
-      }
+      if (movie && movie.id) heroContainer.appendChild(window.createHeroCard(movie));
     });
 
     setTimeout(() => window.centerFirstHeroCard(heroContainer), 100);
@@ -216,98 +323,166 @@ async function initHome() {
     window.enableDragScroll(heroContainer);
     window.observeHeroCards(heroContainer);
 
-    let autoSlideInterval = setInterval(() => {
-      const container = heroContainer;
-      const activeCard = container.querySelector('.hero-card.active');
+    if (autoSlideInterval) clearInterval(autoSlideInterval);
+    autoSlideInterval = setInterval(() => {
+      const activeCard = heroContainer.querySelector('.hero-card.active');
       if (!activeCard) return;
-      const next = activeCard.nextElementSibling || container.firstElementChild;
+      const next = activeCard.nextElementSibling || heroContainer.firstElementChild;
       if (next) {
-        const containerRect = container.getBoundingClientRect();
+        const containerRect = heroContainer.getBoundingClientRect();
         const cardRect = next.getBoundingClientRect();
-        const targetLeft = container.scrollLeft + (cardRect.left - containerRect.left) - (containerRect.width / 2) + (cardRect.width / 2);
-        container.scrollTo({ left: targetLeft, behavior: 'smooth' });
+        const targetLeft = heroContainer.scrollLeft + (cardRect.left - containerRect.left) - (containerRect.width / 2) + (cardRect.width / 2);
+        heroContainer.scrollTo({ left: targetLeft, behavior: 'smooth' });
       }
     }, 4000);
-    heroContainer.addEventListener('touchstart', () => clearInterval(autoSlideInterval), { once: true });
-    heroContainer.addEventListener('mousedown', () => clearInterval(autoSlideInterval), { once: true });
+    const stopSlide = () => {
+      if (autoSlideInterval) clearInterval(autoSlideInterval);
+      autoSlideInterval = null;
+    };
+    heroContainer.addEventListener('touchstart', stopSlide, { once: true });
+    heroContainer.addEventListener('mousedown', stopSlide, { once: true });
 
-    // Populate rows using .results
+    [trendingScroll, popularScroll, topRatedScroll].forEach(el => { if (el) el.style.opacity = '0'; });
+    trendingScroll.innerHTML = '';
+    popularScroll.innerHTML = '';
+    topRatedScroll.innerHTML = '';
     trendingMovies.slice(0, 12).forEach(m => trendingScroll.appendChild(window.createSmallCard(m)));
     popularMovies.slice(0, 12).forEach(m => popularScroll.appendChild(window.createSmallCard(m)));
     topRatedMovies.slice(0, 12).forEach(m => topRatedScroll.appendChild(window.createSmallCard(m)));
+    setTimeout(() => {
+      [trendingScroll, popularScroll, topRatedScroll].forEach(el => {
+        if (el) {
+          el.style.transition = 'opacity 0.3s';
+          el.style.opacity = '1';
+        }
+      });
+    }, 50);
   } catch (error) {
-    console.error("Home init error:", error);
+    console.error("Home load error:", error);
     heroContainer.innerHTML = '<div class="empty-message">Failed to load movies</div>';
   }
 }
 
-// ---------- SEARCH & HISTORY (dummy, actual in search.js) ----------
-function initSearch() {}
-function initSearchHistory() {
-  const HISTORY_KEY = 'searchHistory';
-  const MAX_HISTORY = 10;
-  const input = document.getElementById('searchInput');
-  const historyContainer = document.getElementById('searchHistory');
-  if (!historyContainer) return;
-  function renderHistory() {
-    const history = getSearchHistory();
-    if (history.length === 0) {
-      historyContainer.classList.remove('show');
-      return;
-    }
-    historyContainer.classList.add('show');
-    let html = '<div class="history-header"><span>Recent searches</span><button class="clear-history">Clear all</button></div>';
-    history.forEach(q => {
-      html += `<div class="history-item" data-query="${q}"><span class="query">${q}</span><button class="delete-item" data-query="${q}">✕</button></div>`;
-    });
-    historyContainer.innerHTML = html;
-    historyContainer.querySelectorAll('.history-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        if (e.target.classList.contains('delete-item')) return;
-        const query = item.dataset.query;
-        input.value = query;
-        historyContainer.classList.remove('show');
-        input.dispatchEvent(new Event('input'));
-      });
-    });
-    historyContainer.querySelectorAll('.delete-item').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const query = btn.dataset.query;
-        removeSearchHistoryItem(query);
-        renderHistory();
-      });
-    });
-    const clearBtn = historyContainer.querySelector('.clear-history');
-    if (clearBtn) clearBtn.addEventListener('click', () => { clearSearchHistory(); renderHistory(); });
+// ---------- DISCOVER LOGIC (with caching for first page) ----------
+let discoverIndicator = null;
+let currentDiscoverType = 'movie';
+let discoverPage = 1;
+let discoverLoading = false;
+let discoverHasMore = true;
+
+function initDiscoverTabs() {
+  const tabsContainer = document.querySelector('.discover-tabs');
+  if (!tabsContainer) return;
+
+  if (!discoverIndicator) {
+    discoverIndicator = document.createElement('div');
+    discoverIndicator.className = 'tab-indicator';
+    tabsContainer.appendChild(discoverIndicator);
   }
-  input.addEventListener('focus', () => { if (getSearchHistory().length > 0) renderHistory(); });
-  input.addEventListener('blur', () => { setTimeout(() => historyContainer.classList.remove('show'), 200); });
-  input.addEventListener('change', () => { const q = input.value.trim(); if (q.length >= 2) addSearchHistory(q); });
-  function getSearchHistory() {
-    try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; }
+
+  const tabs = tabsContainer.querySelectorAll('.tab-btn');
+  function updateIndicator(activeTab) {
+    if (!discoverIndicator) return;
+    discoverIndicator.style.transform = `translateX(${activeTab.offsetLeft}px)`;
+    discoverIndicator.style.width = `${activeTab.offsetWidth}px`;
   }
-  function addSearchHistory(query) {
-    let history = getSearchHistory();
-    history = history.filter(q => q !== query);
-    history.unshift(query);
-    if (history.length > MAX_HISTORY) history.pop();
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+
+  setTimeout(() => {
+    const active = tabsContainer.querySelector('.tab-btn.active');
+    if (active) updateIndicator(active);
+  }, 10);
+
+  tabs.forEach(tab => {
+    tab.removeEventListener('click', tabClickHandler);
+    tab.addEventListener('click', tabClickHandler);
+  });
+
+  async function tabClickHandler(e) {
+    const tab = e.currentTarget;
+    if (tab.classList.contains('active')) return;
+    tabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    updateIndicator(tab);
+    currentDiscoverType = tab.dataset.type;
+    await loadDiscoverData(currentDiscoverType, true);
   }
-  function removeSearchHistoryItem(query) {
-    let history = getSearchHistory();
-    history = history.filter(q => q !== query);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-  }
-  function clearSearchHistory() { localStorage.removeItem(HISTORY_KEY); }
+
+  window.addEventListener('resize', () => {
+    const active = tabsContainer.querySelector('.tab-btn.active');
+    if (active) updateIndicator(active);
+  });
 }
 
-// ---------- WATCHLIST RENDERING (unchanged) ----------
+async function loadDiscoverData(type, reset = true) {
+  if (discoverLoading) return;
+  if (reset) {
+    discoverPage = 1;
+    discoverHasMore = true;
+    currentDiscoverType = type;
+    const grid = document.getElementById('discoverGrid');
+    if (grid) grid.innerHTML = '';
+    // Try cache only for first page
+    const cacheKey = `discover_${type}_page1`;
+    const cached = getCachedData(cacheKey);
+    if (cached && cached.results && cached.results.length) {
+      renderDiscoverItems(cached.results, true);
+      discoverPage++;
+      discoverHasMore = true;
+      return;
+    }
+  }
+  discoverLoading = true;
+  const loader = document.getElementById('discoverLoader');
+  if (loader) loader.style.display = 'block';
+  try {
+    const response = type === 'movie' ? await window.fetchDiscoverMovies(discoverPage) : await window.fetchDiscoverTV(discoverPage);
+    const items = response.results || [];
+    if (items.length === 0) {
+      discoverHasMore = false;
+      if (reset) showDiscoverEmpty();
+    } else {
+      if (reset && discoverPage === 1) {
+        setCachedData(`discover_${type}_page1`, response);
+      }
+      renderDiscoverItems(items, reset);
+      discoverPage++;
+      discoverHasMore = true;
+    }
+  } catch (err) {
+    console.error('Discover load error', err);
+    if (reset) showDiscoverEmpty();
+  } finally {
+    discoverLoading = false;
+    if (loader) loader.style.display = 'none';
+  }
+}
+
+function renderDiscoverItems(items, reset) {
+  const grid = document.getElementById('discoverGrid');
+  if (!grid) return;
+  if (reset) grid.innerHTML = '';
+  items.forEach(item => {
+    if (!item.title && item.name) item.title = item.name;
+    const card = window.createSmallCard(item, currentDiscoverType);
+    grid.appendChild(card);
+  });
+}
+
+function showDiscoverEmpty() {
+  const grid = document.getElementById('discoverGrid');
+  if (grid) {
+    grid.innerHTML = '<div class="empty-state">🎬<p>No content available</p><span>Try another category</span></div>';
+  }
+}
+
+// ---------- WATCHLIST LOGIC (no caching needed, already fast) ----------
 function initWatchlistTabs() {
   const tabsContainer = document.querySelector('.watchlist-tabs');
+  if (!tabsContainer) return;
   const tabs = tabsContainer.querySelectorAll('.tab-btn');
   const indicator = tabsContainer.querySelector('.tab-indicator');
   function moveIndicator(active) {
+    if (!indicator) return;
     indicator.style.width = active.offsetWidth + 'px';
     indicator.style.transform = `translateX(${active.offsetLeft}px)`;
   }
@@ -319,23 +494,19 @@ function initWatchlistTabs() {
     tab.removeEventListener('click', tabClickHandler);
     tab.addEventListener('click', tabClickHandler);
   });
+  async function tabClickHandler(e) {
+    const tab = e.currentTarget;
+    if (tab.classList.contains('active')) return;
+    tabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    moveIndicator(tab);
+    currentStatus = tab.dataset.status;
+    await renderWatchlist();
+  }
   window.addEventListener('resize', () => {
     const active = tabsContainer.querySelector('.tab-btn.active');
     if (active) moveIndicator(active);
   });
-}
-
-async function tabClickHandler(e) {
-  const tab = e.currentTarget;
-  if (tab.classList.contains('active')) return;
-  const tabs = document.querySelectorAll('.watchlist-tabs .tab-btn');
-  tabs.forEach(t => t.classList.remove('active'));
-  tab.classList.add('active');
-  const indicator = document.querySelector('.watchlist-tabs .tab-indicator');
-  indicator.style.width = tab.offsetWidth + 'px';
-  indicator.style.transform = `translateX(${tab.offsetLeft}px)`;
-  currentStatus = tab.dataset.status;
-  await renderWatchlist();
 }
 
 async function renderWatchlist() {
@@ -374,7 +545,7 @@ async function renderWatchlist() {
   container.innerHTML = '';
   rows.forEach(row => container.appendChild(row));
   if (!hasAny) {
-    container.innerHTML = '<div class="empty-watchlist"><svg viewBox="0 0 24 24" stroke="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><p>Start building your watchlist</p></div>';
+    container.innerHTML = '<div class="empty-state">📺<p>Start building your watchlist</p><span>Add movies and series</span></div>';
   }
   document.querySelectorAll('.category-row').forEach(row => {
     row.removeEventListener('click', categoryClickHandler);
@@ -408,7 +579,7 @@ async function openExpandedView(category) {
   const items = result.success ? result.items : [];
   expandedGrid.innerHTML = '';
   if (items.length === 0) {
-    expandedGrid.innerHTML = '<p class="empty-message">No items in this category</p>';
+    expandedGrid.innerHTML = '<div class="empty-state">📭<p>No items in this category</p><span>Add some to your watchlist</span></div>';
   } else {
     items.forEach(item => {
       const card = window.createWatchlistCard(item, async (docId) => {
@@ -438,7 +609,7 @@ function closeExpandedView() {
   currentExpandedCategory = null;
 }
 
-// ---------- DETAILS MODAL (unchanged) ----------
+// ---------- DETAILS MODAL ----------
 async function showItemDetails(id, type) {
   if (isOpeningModal) return;
   isOpeningModal = true;
@@ -448,7 +619,7 @@ async function showItemDetails(id, type) {
     return;
   }
   document.getElementById('detailsTitle').textContent = 'Loading...';
-  document.getElementById('detailsPoster').src = 'https://via.placeholder.com/300x450?text=No+Image';
+  document.getElementById('detailsPoster').src = 'https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Poster';
   document.getElementById('detailsOverview').textContent = 'Loading...';
   document.getElementById('detailsGenres').innerHTML = '';
   document.getElementById('detailsCast').innerHTML = '';
@@ -474,7 +645,7 @@ async function showItemDetails(id, type) {
   const releaseDate = item.release_date || item.first_air_date;
   const year = releaseDate ? releaseDate.split('-')[0] : 'N/A';
   const runtime = item.runtime || (item.episode_run_time ? item.episode_run_time[0] : null);
-  const poster = item.poster_path ? window.IMG_BASE + item.poster_path : 'https://via.placeholder.com/300x450?text=No+Poster';
+  const poster = item.poster_path ? window.IMG_BASE + item.poster_path : 'https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Poster';
   const backdrop = item.backdrop_path ? `url(${window.IMG_BASE_ORIGINAL + item.backdrop_path})` : 'none';
   document.getElementById('detailsBackdrop').style.backgroundImage = backdrop;
   document.getElementById('detailsPoster').src = poster;
@@ -505,12 +676,15 @@ async function showItemDetails(id, type) {
     });
   }
   const trailerBtn = document.getElementById('trailerBtn');
-  const trailer = item.videos && item.videos.results ? item.videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube') : null;
-  if (trailer) {
-    trailerBtn.href = `https://www.youtube.com/watch?v=${trailer.key}`;
-    trailerBtn.style.display = 'inline-block';
-  } else {
-    trailerBtn.style.display = 'none';
+  if (trailerBtn) {
+    const videos = item.videos && item.videos.results ? item.videos.results : [];
+    const trailer = videos.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+    if (trailer && trailer.key) {
+      trailerBtn.href = `https://www.youtube.com/watch?v=${trailer.key}`;
+      trailerBtn.style.display = 'inline-flex';
+    } else {
+      trailerBtn.style.display = 'none';
+    }
   }
   document.body.classList.add('modal-open');
   document.getElementById('detailsModal').classList.add('show');
@@ -534,20 +708,99 @@ function hideAddModal() {
   currentAddItem = null;
 }
 
-// ---------- TOAST ----------
-function showToast(msg, type) {
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.classList.add('show'), 10);
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, 2000);
+// ---------- INFINITE SCROLL (optimized, no duplicate) ----------
+let scrollHandlerActive = true;
+function handleScroll() {
+  if (!scrollHandlerActive) return;
+  if (scrollThrottleTimer) return;
+  scrollThrottleTimer = requestAnimationFrame(() => {
+    const bodyClass = document.body.classList;
+    if (bodyClass.contains('discover-page')) {
+      if (!discoverLoading && discoverHasMore) {
+        const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+        if (scrollTop + clientHeight >= scrollHeight - 200) {
+          loadDiscoverData(currentDiscoverType, false);
+        }
+      }
+    }
+    scrollThrottleTimer = null;
+  });
+}
+window.addEventListener('scroll', handleScroll);
+
+// ---------- INSTALL PROMPT ----------
+function initInstallPrompt() {
+  const installBtn = document.getElementById('installAppBtn');
+  if (!installBtn) return;
+  installBtn.style.display = 'none';
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'flex';
+  });
+  installBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    installBtn.style.display = 'none';
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User ${outcome} the installation`);
+    deferredPrompt = null;
+  });
 }
 
-// Expose globals
+// ---------- SINGLE INIT FUNCTION (with global loader only on first load) ----------
+let isFirstLoad = true;
+
+async function initApp() {
+  if (isFirstLoad) showGlobalLoader();
+  initTheme();
+  if (typeof initCustomDropdowns === 'function') initCustomDropdowns();
+  initModals();
+  initInstallPrompt();
+
+  const bodyClass = document.body.classList;
+  if (bodyClass.contains('home-page')) {
+    showHomeSkeleton();
+    await loadHome();
+  } else if (bodyClass.contains('discover-page')) {
+    showDiscoverSkeleton();
+    initDiscoverTabs();
+    await loadDiscoverData('movie', true);
+  } else if (bodyClass.contains('watchlist-page')) {
+    showWatchlistSkeleton();
+    initWatchlistTabs();
+    await renderWatchlist();
+    setupWatchlistExpandedView();
+  } else if (bodyClass.contains('search-page')) {
+    if (typeof initSearch === 'function') initSearch();
+    if (typeof initSearchHistory === 'function') initSearchHistory();
+  }
+
+  const themeBtn = document.getElementById('themeToggleBtn');
+  if (themeBtn) themeBtn.removeEventListener('click', showThemeSettings);
+  if (themeBtn) themeBtn.addEventListener('click', showThemeSettings);
+
+  if (isFirstLoad) {
+    isFirstLoad = false;
+    // Wait for images to load (optional, but helps)
+    const images = document.querySelectorAll('img');
+    if (images.length) {
+      await Promise.all(Array.from(images).map(img => new Promise(resolve => {
+        if (img.complete) resolve();
+        else { img.onload = resolve; img.onerror = resolve; }
+      })));
+    }
+    hideGlobalLoader();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
+window.addEventListener('beforeunload', () => {
+  if (autoSlideInterval) clearInterval(autoSlideInterval);
+  scrollHandlerActive = false;
+  window.removeEventListener('scroll', handleScroll);
+});
+
 window.showAddModal = showAddModal;
 window.showItemDetails = showItemDetails;
 window.showToast = showToast;

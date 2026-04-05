@@ -1,4 +1,3 @@
-// js/discover.js – Fixed to use data.results from new API structure
 let currentType = 'movie';
 let currentPage = 1;
 let loading = false;
@@ -6,10 +5,17 @@ let hasMore = true;
 
 function initDiscoverTabs() {
   const tabsContainer = document.querySelector('.discover-tabs');
-  const tabs = tabsContainer.querySelectorAll('.tab-btn');
+  if (!tabsContainer) return;
+
+  // Remove existing indicator if any, then create new one
+  const existingIndicator = tabsContainer.querySelector('.tab-indicator');
+  if (existingIndicator) existingIndicator.remove();
+
   const indicator = document.createElement('div');
   indicator.className = 'tab-indicator';
   tabsContainer.appendChild(indicator);
+
+  const tabs = tabsContainer.querySelectorAll('.tab-btn');
 
   function updateIndicator(activeTab) {
     const offset = activeTab.offsetLeft;
@@ -23,19 +29,23 @@ function initDiscoverTabs() {
     if (active) updateIndicator(active);
   }, 10);
 
-  tabs.forEach((tab, idx) => {
-    tab.addEventListener('click', () => {
-      if (tab.classList.contains('active')) return;
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      updateIndicator(tab);
-      currentType = tab.dataset.type;
-      currentPage = 1;
-      hasMore = true;
-      document.getElementById('discoverGrid').innerHTML = '';
-      loadDiscover(currentType, currentPage);
-    });
+  tabs.forEach(tab => {
+    tab.removeEventListener('click', tabClickHandler);
+    tab.addEventListener('click', tabClickHandler);
   });
+
+  function tabClickHandler(e) {
+    const tab = e.currentTarget;
+    if (tab.classList.contains('active')) return;
+    tabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    updateIndicator(tab);
+    currentType = tab.dataset.type;
+    currentPage = 1;
+    hasMore = true;
+    document.getElementById('discoverGrid').innerHTML = '';
+    loadDiscover(currentType, currentPage);
+  }
 
   window.addEventListener('resize', () => {
     const active = tabsContainer.querySelector('.tab-btn.active');

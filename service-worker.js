@@ -1,5 +1,5 @@
 // service-worker.js
-const CACHE_NAME = 'orvion-v4';
+const CACHE_NAME = 'orvion-v6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
