@@ -1,4 +1,4 @@
-// js/app.js – Full with add/update modal logic and status update modal
+// js/app.js – Fixed home page loading, robust error handling, skeleton removal
 import { addOrUpdateWatchlist, removeFromWatchlist, updateWatchlistStatus, getItemsByStatusAndCategory } from './watchlist.js';
 
 let currentStatus = 'plan';
@@ -13,12 +13,17 @@ let deferredPrompt = null;
 
 const CACHE_TTL = 60 * 60 * 1000;
 
+// ---------- SKELETON HELPERS ----------
 function showHomeSkeleton() {
   const hero = document.getElementById('heroCarousel');
   const trending = document.getElementById('trendingScroll');
   const popular = document.getElementById('popularScroll');
   const topRated = document.getElementById('topRatedScroll');
-  if (hero) hero.innerHTML = '<div class="skeleton-card" style="width:70vw; max-width:260px; margin:12px auto;"></div>';
+
+  // Only show skeleton if hero container exists (if using normal carousel; infinite carousel has its own loading)
+  if (hero && hero.children.length === 0) {
+    hero.innerHTML = '<div class="skeleton-card" style="width:70vw; max-width:260px; margin:12px auto;"></div>';
+  }
   const addSkeletonRow = (container) => {
     if (!container) return;
     container.innerHTML = '';
@@ -31,6 +36,21 @@ function showHomeSkeleton() {
   addSkeletonRow(trending);
   addSkeletonRow(popular);
   addSkeletonRow(topRated);
+}
+
+function removeHomeSkeleton() {
+  // This is called after data loads to clear any leftover skeletons
+  const hero = document.getElementById('heroCarousel');
+  const trending = document.getElementById('trendingScroll');
+  const popular = document.getElementById('popularScroll');
+  const topRated = document.getElementById('topRatedScroll');
+  if (hero && hero.innerHTML.includes('skeleton-card')) {
+    hero.innerHTML = '';
+  }
+  // Rows will be overwritten anyway, but ensure they are not left with skeletons
+  if (trending && trending.innerHTML.includes('skeleton-card')) trending.innerHTML = '';
+  if (popular && popular.innerHTML.includes('skeleton-card')) popular.innerHTML = '';
+  if (topRated && topRated.innerHTML.includes('skeleton-card')) topRated.innerHTML = '';
 }
 
 function showDiscoverSkeleton() {
@@ -50,6 +70,7 @@ function showWatchlistSkeleton() {
   container.innerHTML = '<div class="loading-spinner">Loading...</div>';
 }
 
+// ---------- CACHE HELPERS ----------
 function getCachedData(key) {
   const cached = localStorage.getItem(key);
   if (!cached) return null;
@@ -65,6 +86,7 @@ function setCachedData(key, data) {
   localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
 }
 
+// ---------- TOAST SYSTEM ----------
 function showToast(msg, type = 'success') {
   if (activeToast) {
     activeToast.classList.remove('show');
@@ -94,6 +116,7 @@ function createToast(msg, type) {
   }, 2000);
 }
 
+// ---------- THEME SYSTEM ----------
 function initTheme() {
   const savedTheme = localStorage.getItem('orvion-theme') || 'dark';
   const savedColor = localStorage.getItem('orvion-color') || 'purple';
@@ -171,7 +194,7 @@ function showThemeSettings() {
   modal.classList.add('show');
 }
 
-// ---------- WATCHLIST MODAL LOGIC (Add/Update) ----------
+// ---------- MODAL INITIALIZATION ----------
 function initModals() {
   const cancelBtn = document.getElementById('modalCancel');
   const saveBtn = document.getElementById('modalSave');
@@ -202,7 +225,8 @@ function initModals() {
       const result = await addOrUpdateWatchlist(item);
       if (result.success) {
         if (result.isUpdate) {
-          showToast(`Status updated to ${status.charAt(0).toUpperCase() + status.slice(1)}`, 'success');
+          const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+          showToast(`Status updated to ${statusText}`, 'success');
         } else {
           showToast('Added to watchlist', 'success');
         }
@@ -239,14 +263,11 @@ function detailsAddHandler() {
     title: currentItem.title || currentItem.name,
     poster: currentItem.poster_path ? window.IMG_BASE + currentItem.poster_path : 'https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Poster'
   };
-  // Check if item already exists to pre-select category? Not needed; modal will handle add/update.
   showAddModal(currentAddItem);
 }
 
-// Show add modal – always shows category and status dropdowns (add mode)
 function showAddModal(item) {
   currentAddItem = item;
-  // Reset dropdowns to default
   const categoryDropdown = document.querySelector('#categoryDropdown');
   const statusDropdown = document.querySelector('#statusDropdown');
   if (categoryDropdown) {
@@ -275,140 +296,113 @@ function hideAddModal() {
   currentAddItem = null;
 }
 
-// Status update modal for three-dot menu
-let currentUpdatingDocId = null;
-let currentUpdatingTitle = null;
-
-function showStatusUpdateModal(docId, title, currentStatusVal) {
-  currentUpdatingDocId = docId;
-  currentUpdatingTitle = title;
-  let modal = document.getElementById('statusUpdateModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'statusUpdateModal';
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content add-modal-content glass">
-        <div class="modal-header">
-          <h3>Change Status</h3>
-          <p class="modal-subtitle" id="statusUpdateTitle"></p>
-        </div>
-        <div class="modal-body">
-          <div class="input-group">
-            <label>New Status</label>
-            <div class="custom-dropdown" id="statusUpdateDropdown">
-              <div class="dropdown-selected">Plan to Watch</div>
-              <div class="dropdown-options">
-                <div class="dropdown-option" data-value="plan">Plan to Watch</div>
-                <div class="dropdown-option" data-value="watching">Watching</div>
-                <div class="dropdown-option" data-value="completed">Completed</div>
-                <div class="dropdown-option" data-value="dropped">Dropped</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn glass-btn" id="statusUpdateCancel">Cancel</button>
-          <button class="btn accent-btn" id="statusUpdateSave">Update</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    // Initialize custom dropdown
-    const dropdown = modal.querySelector('.custom-dropdown');
-    const selected = dropdown.querySelector('.dropdown-selected');
-    const options = dropdown.querySelectorAll('.dropdown-option');
-    selected.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      document.querySelectorAll('.custom-dropdown.open').forEach(d => {
-        if (d !== dropdown) d.classList.remove('open');
-      });
-      dropdown.classList.toggle('open');
-    });
-    options.forEach(opt => {
-      opt.addEventListener('pointerdown', (e) => {
-        e.stopPropagation();
-        dropdown.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
-        opt.classList.add('selected');
-        selected.textContent = opt.textContent;
-        dropdown.classList.remove('open');
-      });
-    });
-    document.addEventListener('pointerdown', (e) => {
-      if (!e.target.closest('.custom-dropdown')) {
-        document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
-      }
-    });
-    modal.querySelector('#statusUpdateCancel').addEventListener('click', () => {
-      modal.classList.remove('show');
-      document.body.classList.remove('modal-open');
-    });
-    modal.querySelector('#statusUpdateSave').addEventListener('click', async () => {
-      const newStatusOption = modal.querySelector('#statusUpdateDropdown .dropdown-option.selected');
-      const newStatus = newStatusOption ? newStatusOption.dataset.value : 'plan';
-      if (currentUpdatingDocId) {
-        const res = await updateWatchlistStatus(currentUpdatingDocId, newStatus);
-        if (res.success) {
-          let statusText = '';
-          switch(newStatus) {
-            case 'plan': statusText = 'Plan to Watch'; break;
-            case 'watching': statusText = 'Watching'; break;
-            case 'completed': statusText = 'Completed'; break;
-            case 'dropped': statusText = 'Dropped'; break;
-          }
-          showToast(`Status updated to ${statusText}`, 'success');
-          if (document.body.classList.contains('watchlist-page')) {
-            await renderWatchlist();
-          }
-        } else {
-          showToast('Failed to update status', 'error');
-        }
-      }
-      modal.classList.remove('show');
-      document.body.classList.remove('modal-open');
-      currentUpdatingDocId = null;
-    });
-  }
-  const titleSpan = modal.querySelector('#statusUpdateTitle');
-  titleSpan.textContent = `"${title}"`;
-  // Set current status as selected
-  const currentStatusMap = {
-    'plan': 'Plan to Watch',
-    'watching': 'Watching',
-    'completed': 'Completed',
-    'dropped': 'Dropped'
-  };
-  const currentText = currentStatusMap[currentStatusVal] || 'Plan to Watch';
-  const dropdown = modal.querySelector('#statusUpdateDropdown');
-  const selectedDiv = dropdown.querySelector('.dropdown-selected');
-  selectedDiv.textContent = currentText;
-  const options = dropdown.querySelectorAll('.dropdown-option');
-  options.forEach(opt => {
-    if (opt.dataset.value === currentStatusVal) {
-      opt.classList.add('selected');
-    } else {
-      opt.classList.remove('selected');
-    }
-  });
-  document.body.classList.add('modal-open');
-  modal.classList.add('show');
-}
-
-function hideStatusUpdateModal() {
-  const modal = document.getElementById('statusUpdateModal');
-  if (modal) {
-    modal.classList.remove('show');
-    document.body.classList.remove('modal-open');
-    currentUpdatingDocId = null;
-  }
-}
-
-// ---------- HOME LOGIC (unchanged) ----------
+// ---------- HOME PAGE (FIXED) ----------
 async function loadHome() {
-  // ... (keep existing loadHome function)
+  console.log('loadHome started');
+  const heroContainer = document.getElementById('heroCarousel');
+  const trendingScroll = document.getElementById('trendingScroll');
+  const popularScroll = document.getElementById('popularScroll');
+  const topRatedScroll = document.getElementById('topRatedScroll');
+
+  // If hero container doesn't exist (maybe infinite carousel is used), skip hero loading
+  const hasHero = heroContainer !== null;
+  if (!hasHero) {
+    console.log('Hero container not found, skipping hero loading');
+  }
+
+  try {
+    // Fetch data with caching
+    let trendingData = getCachedData('trending');
+    let popularData = getCachedData('popular');
+    let topRatedData = getCachedData('topRated');
+
+    if (!trendingData || !popularData || !topRatedData) {
+      console.log('Fetching fresh data for home');
+      const [trendingRes, popularRes, topRatedRes] = await Promise.all([
+        window.fetchTrending().catch(err => { console.error("Trending fetch failed:", err); return { results: [], total_pages: 1 }; }),
+        window.fetchPopular().catch(err => { console.error("Popular fetch failed:", err); return { results: [], total_pages: 1 }; }),
+        window.fetchTopRated().catch(err => { console.error("TopRated fetch failed:", err); return { results: [], total_pages: 1 }; })
+      ]);
+      trendingData = trendingRes;
+      popularData = popularRes;
+      topRatedData = topRatedRes;
+      setCachedData('trending', trendingData);
+      setCachedData('popular', popularData);
+      setCachedData('topRated', topRatedData);
+    }
+
+    const trendingMovies = trendingData.results || [];
+    const popularMovies = popularData.results || [];
+    const topRatedMovies = topRatedData.results || [];
+
+    // Hero carousel – if container exists and we have movies, populate it
+    if (hasHero && trendingMovies.length) {
+      // Shuffle and pick top 10 for hero
+      const allMovies = [...trendingMovies, ...popularMovies, ...topRatedMovies];
+      const shuffled = allMovies.sort(() => 0.5 - Math.random());
+      const heroMovies = shuffled.slice(0, 10);
+      heroContainer.innerHTML = '';
+      heroMovies.forEach(movie => {
+        if (movie && movie.id) {
+          heroContainer.appendChild(window.createHeroCard(movie));
+        }
+      });
+      setTimeout(() => window.centerFirstHeroCard(heroContainer), 100);
+      const firstCard = heroContainer.querySelector('.hero-card');
+      if (firstCard) firstCard.classList.add('active');
+      window.enableDragScroll(heroContainer);
+      window.observeHeroCards(heroContainer);
+    } else if (hasHero) {
+      heroContainer.innerHTML = '<div class="empty-message">No movies available</div>';
+    }
+
+    // Populate trending row
+    if (trendingScroll) {
+      trendingScroll.style.opacity = '0';
+      trendingScroll.innerHTML = '';
+      trendingMovies.slice(0, 12).forEach(m => trendingScroll.appendChild(window.createSmallCard(m)));
+      setTimeout(() => {
+        trendingScroll.style.transition = 'opacity 0.3s';
+        trendingScroll.style.opacity = '1';
+      }, 50);
+    }
+
+    // Populate popular row
+    if (popularScroll) {
+      popularScroll.style.opacity = '0';
+      popularScroll.innerHTML = '';
+      popularMovies.slice(0, 12).forEach(m => popularScroll.appendChild(window.createSmallCard(m)));
+      setTimeout(() => {
+        popularScroll.style.transition = 'opacity 0.3s';
+        popularScroll.style.opacity = '1';
+      }, 50);
+    }
+
+    // Populate top rated row
+    if (topRatedScroll) {
+      topRatedScroll.style.opacity = '0';
+      topRatedScroll.innerHTML = '';
+      topRatedMovies.slice(0, 12).forEach(m => topRatedScroll.appendChild(window.createSmallCard(m)));
+      setTimeout(() => {
+        topRatedScroll.style.transition = 'opacity 0.3s';
+        topRatedScroll.style.opacity = '1';
+      }, 50);
+    }
+
+    // Clear skeletons explicitly
+    removeHomeSkeleton();
+    console.log('Home page loaded successfully');
+  } catch (error) {
+    console.error("Home load error:", error);
+    if (heroContainer && hasHero) heroContainer.innerHTML = '<div class="empty-message">Failed to load movies</div>';
+    if (trendingScroll) trendingScroll.innerHTML = '<div class="empty-message">Failed to load</div>';
+    if (popularScroll) popularScroll.innerHTML = '<div class="empty-message">Failed to load</div>';
+    if (topRatedScroll) topRatedScroll.innerHTML = '<div class="empty-message">Failed to load</div>';
+    removeHomeSkeleton();
+  }
 }
 
-// ---------- DISCOVER LOGIC (unchanged) ----------
+// ---------- DISCOVER LOGIC (unchanged, but included for completeness) ----------
 let discoverIndicator = null;
 let currentDiscoverType = 'movie';
 let discoverPage = 1;
@@ -416,22 +410,104 @@ let discoverLoading = false;
 let discoverHasMore = true;
 
 function initDiscoverTabs() {
-  // ... (keep existing)
+  const tabsContainer = document.querySelector('.discover-tabs');
+  if (!tabsContainer) return;
+  if (!discoverIndicator) {
+    discoverIndicator = document.createElement('div');
+    discoverIndicator.className = 'tab-indicator';
+    tabsContainer.appendChild(discoverIndicator);
+  }
+  const tabs = tabsContainer.querySelectorAll('.tab-btn');
+  function updateIndicator(activeTab) {
+    if (!discoverIndicator) return;
+    discoverIndicator.style.transform = `translateX(${activeTab.offsetLeft}px)`;
+    discoverIndicator.style.width = `${activeTab.offsetWidth}px`;
+  }
+  setTimeout(() => {
+    const active = tabsContainer.querySelector('.tab-btn.active');
+    if (active) updateIndicator(active);
+  }, 10);
+  tabs.forEach(tab => {
+    tab.removeEventListener('click', tabClickHandler);
+    tab.addEventListener('click', tabClickHandler);
+  });
+  async function tabClickHandler(e) {
+    const tab = e.currentTarget;
+    if (tab.classList.contains('active')) return;
+    tabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    updateIndicator(tab);
+    currentDiscoverType = tab.dataset.type;
+    await loadDiscoverData(currentDiscoverType, true);
+  }
+  window.addEventListener('resize', () => {
+    const active = tabsContainer.querySelector('.tab-btn.active');
+    if (active) updateIndicator(active);
+  });
 }
 
 async function loadDiscoverData(type, reset = true) {
-  // ... (keep existing)
+  if (discoverLoading) return;
+  if (reset) {
+    discoverPage = 1;
+    discoverHasMore = true;
+    currentDiscoverType = type;
+    const grid = document.getElementById('discoverGrid');
+    if (grid) grid.innerHTML = '';
+    const cacheKey = `discover_${type}_page1`;
+    const cached = getCachedData(cacheKey);
+    if (cached && cached.results && cached.results.length) {
+      renderDiscoverItems(cached.results, true);
+      discoverPage++;
+      discoverHasMore = true;
+      return;
+    }
+  }
+  discoverLoading = true;
+  const loader = document.getElementById('discoverLoader');
+  if (loader) loader.style.display = 'block';
+  try {
+    const response = type === 'movie' ? await window.fetchDiscoverMovies(discoverPage) : await window.fetchDiscoverTV(discoverPage);
+    const items = response.results || [];
+    if (items.length === 0) {
+      discoverHasMore = false;
+      if (reset) showDiscoverEmpty();
+    } else {
+      if (reset && discoverPage === 1) {
+        setCachedData(`discover_${type}_page1`, response);
+      }
+      renderDiscoverItems(items, reset);
+      discoverPage++;
+      discoverHasMore = true;
+    }
+  } catch (err) {
+    console.error('Discover load error', err);
+    if (reset) showDiscoverEmpty();
+  } finally {
+    discoverLoading = false;
+    if (loader) loader.style.display = 'none';
+  }
 }
 
 function renderDiscoverItems(items, reset) {
-  // ... (keep existing)
+  const grid = document.getElementById('discoverGrid');
+  if (!grid) return;
+  if (reset) grid.innerHTML = '';
+  items.forEach(item => {
+    if (!item.title && item.name) item.title = item.name;
+    const card = window.createSmallCard(item, currentDiscoverType);
+    grid.appendChild(card);
+  });
 }
 
 function showDiscoverEmpty() {
-  // ... (keep existing)
+  const grid = document.getElementById('discoverGrid');
+  if (grid) {
+    grid.innerHTML = '<div class="empty-state">🎬<p>No content available</p><span>Try another category</span></div>';
+  }
 }
 
-// ---------- WATCHLIST RENDERING (updated to pass onStatusChange) ----------
+// ---------- WATCHLIST RENDERING ----------
 function initWatchlistTabs() {
   const tabsContainer = document.querySelector('.watchlist-tabs');
   if (!tabsContainer) return;
@@ -486,7 +562,7 @@ async function renderWatchlist() {
     result.items.forEach(item => {
       const card = window.createWatchlistCard(
         item,
-        async (docId) => { // onRemove
+        async (docId) => {
           const res = await removeFromWatchlist(docId);
           if (res.success) {
             await renderWatchlist();
@@ -495,7 +571,7 @@ async function renderWatchlist() {
             showToast('Error removing item', 'error');
           }
         },
-        (docId, title, currentStatusVal) => { // onStatusChange
+        (docId, title, currentStatusVal) => {
           showStatusUpdateModal(docId, title, currentStatusVal);
         }
       );
@@ -575,6 +651,123 @@ function closeExpandedView() {
   expandedView.style.display = 'none';
   document.body.style.overflow = '';
   currentExpandedCategory = null;
+}
+
+// ---------- STATUS UPDATE MODAL ----------
+let currentUpdatingDocId = null;
+let currentUpdatingTitle = null;
+
+function showStatusUpdateModal(docId, title, currentStatusVal) {
+  currentUpdatingDocId = docId;
+  currentUpdatingTitle = title;
+  let modal = document.getElementById('statusUpdateModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'statusUpdateModal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content add-modal-content glass">
+        <div class="modal-header">
+          <h3>Change Status</h3>
+          <p class="modal-subtitle" id="statusUpdateTitle"></p>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+            <label>New Status</label>
+            <div class="custom-dropdown" id="statusUpdateDropdown">
+              <div class="dropdown-selected">Plan to Watch</div>
+              <div class="dropdown-options">
+                <div class="dropdown-option" data-value="plan">Plan to Watch</div>
+                <div class="dropdown-option" data-value="watching">Watching</div>
+                <div class="dropdown-option" data-value="completed">Completed</div>
+                <div class="dropdown-option" data-value="dropped">Dropped</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn glass-btn" id="statusUpdateCancel">Cancel</button>
+          <button class="btn accent-btn" id="statusUpdateSave">Update</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    const dropdown = modal.querySelector('.custom-dropdown');
+    const selected = dropdown.querySelector('.dropdown-selected');
+    const options = dropdown.querySelectorAll('.dropdown-option');
+    selected.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.custom-dropdown.open').forEach(d => {
+        if (d !== dropdown) d.classList.remove('open');
+      });
+      dropdown.classList.toggle('open');
+    });
+    options.forEach(opt => {
+      opt.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        dropdown.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        selected.textContent = opt.textContent;
+        dropdown.classList.remove('open');
+      });
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (!e.target.closest('.custom-dropdown')) {
+        document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
+      }
+    });
+    modal.querySelector('#statusUpdateCancel').addEventListener('click', () => {
+      modal.classList.remove('show');
+      document.body.classList.remove('modal-open');
+    });
+    modal.querySelector('#statusUpdateSave').addEventListener('click', async () => {
+      const newStatusOption = modal.querySelector('#statusUpdateDropdown .dropdown-option.selected');
+      const newStatus = newStatusOption ? newStatusOption.dataset.value : 'plan';
+      if (currentUpdatingDocId) {
+        const res = await updateWatchlistStatus(currentUpdatingDocId, newStatus);
+        if (res.success) {
+          let statusText = '';
+          switch(newStatus) {
+            case 'plan': statusText = 'Plan to Watch'; break;
+            case 'watching': statusText = 'Watching'; break;
+            case 'completed': statusText = 'Completed'; break;
+            case 'dropped': statusText = 'Dropped'; break;
+          }
+          showToast(`Status updated to ${statusText}`, 'success');
+          if (document.body.classList.contains('watchlist-page')) {
+            await renderWatchlist();
+          }
+        } else {
+          showToast('Failed to update status', 'error');
+        }
+      }
+      modal.classList.remove('show');
+      document.body.classList.remove('modal-open');
+      currentUpdatingDocId = null;
+    });
+  }
+  const titleSpan = modal.querySelector('#statusUpdateTitle');
+  titleSpan.textContent = `"${title}"`;
+  const currentStatusMap = {
+    'plan': 'Plan to Watch',
+    'watching': 'Watching',
+    'completed': 'Completed',
+    'dropped': 'Dropped'
+  };
+  const currentText = currentStatusMap[currentStatusVal] || 'Plan to Watch';
+  const dropdown = modal.querySelector('#statusUpdateDropdown');
+  const selectedDiv = dropdown.querySelector('.dropdown-selected');
+  selectedDiv.textContent = currentText;
+  const options = dropdown.querySelectorAll('.dropdown-option');
+  options.forEach(opt => {
+    if (opt.dataset.value === currentStatusVal) {
+      opt.classList.add('selected');
+    } else {
+      opt.classList.remove('selected');
+    }
+  });
+  document.body.classList.add('modal-open');
+  modal.classList.add('show');
 }
 
 // ---------- DETAILS MODAL ----------
@@ -664,7 +857,7 @@ function hideDetailsModal() {
   currentItem = null;
 }
 
-// ---------- INFINITE SCROLL (unchanged) ----------
+// ---------- INFINITE SCROLL ----------
 let scrollHandlerActive = true;
 function handleScroll() {
   if (!scrollHandlerActive) return;
@@ -684,6 +877,7 @@ function handleScroll() {
 }
 window.addEventListener('scroll', handleScroll);
 
+// ---------- INSTALL PROMPT ----------
 function initInstallPrompt() {
   const installBtn = document.getElementById('installAppBtn');
   if (!installBtn) return;
@@ -709,6 +903,7 @@ async function initApp() {
   if (typeof initCustomDropdowns === 'function') initCustomDropdowns();
   initModals();
   initInstallPrompt();
+
   const bodyClass = document.body.classList;
   if (bodyClass.contains('home-page')) {
     showHomeSkeleton();
@@ -726,6 +921,7 @@ async function initApp() {
     if (typeof initSearch === 'function') initSearch();
     if (typeof initSearchHistory === 'function') initSearchHistory();
   }
+
   const themeBtn = document.getElementById('themeToggleBtn');
   if (themeBtn) themeBtn.removeEventListener('click', showThemeSettings);
   if (themeBtn) themeBtn.addEventListener('click', showThemeSettings);

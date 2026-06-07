@@ -126,4 +126,4 @@ window.watchlist = {
   getAll: getAllWatchlist,
   getByStatusAndCategory: getItemsByStatusAndCategory,
   subscribe: subscribeWatchlist
-};
+};getAllWatchlist
