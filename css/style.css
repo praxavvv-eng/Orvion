@@ -1169,3 +1169,59 @@ img {
   transform: scale(0.98);
   transition: transform 0.1s;
 }
+/* css/style.css – Add menu button styles */
+/* (Add these rules to your existing style.css – full file not repeated, only additions) */
+
+/* Menu button (three dots) on watchlist cards */
+.menu-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+.menu-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 2;
+  fill: none;
+}
+.menu-btn:hover {
+  background: rgba(124, 58, 237, 0.3);
+  transform: scale(1.08);
+  opacity: 1;
+}
+.menu-btn:active {
+  transform: scale(0.92);
+}
+/* Ensure remove button and menu button don't overlap */
+.remove-btn {
+  top: 8px;
+  right: 8px;
+  bottom: auto;
+}
+/* Adjust for mobile */
+@media (max-width: 768px) {
+  .menu-btn {
+    width: 30px;
+    height: 30px;
+  }
+  .menu-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+}

@@ -1,4 +1,4 @@
-// js/ui.js – Full with long press working for all cards including search
+// js/ui.js – Full with menu button on watchlist cards
 const observers = [];
 
 function attachRipple(button) {
@@ -145,11 +145,12 @@ window.createSmallCard = function(item, explicitType) {
   return card;
 };
 
-window.createWatchlistCard = function(item, onRemove) {
+window.createWatchlistCard = function(item, onRemove, onStatusChange) {
   const card = document.createElement('div');
   card.className = 'card-sm';
   card.dataset.id = item.id;
   card.dataset.type = item.category === 'movie' ? 'movie' : 'tv';
+  card.dataset.docid = item.docId;
   const poster = item.poster || 'https://dummyimage.com/140x210/1e1e1e/aaa?text=No+Image';
   const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}` : '';
   const posterContainer = document.createElement('div');
@@ -164,6 +165,7 @@ window.createWatchlistCard = function(item, onRemove) {
   ratingBadge.textContent = rating;
   posterContainer.appendChild(ratingBadge);
   
+  // Remove button (X)
   if (onRemove && item.docId) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
@@ -175,6 +177,18 @@ window.createWatchlistCard = function(item, onRemove) {
       onRemove(item.docId);
     });
     posterContainer.appendChild(removeBtn);
+  }
+  
+  // Menu button (three dots) for status change
+  if (onStatusChange && item.docId) {
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'menu-btn';
+    menuBtn.innerHTML = `<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`;
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onStatusChange(item.docId, item.title, item.status);
+    });
+    posterContainer.appendChild(menuBtn);
   }
   
   card.appendChild(posterContainer);

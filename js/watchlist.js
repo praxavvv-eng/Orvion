@@ -1,4 +1,4 @@
-// js/watchlist.js – Full with duplicate prevention (Firestore query), no duplicates
+// js/watchlist.js – Full with addOrUpdate and updateStatus
 import {
   collection,
   addDoc,
@@ -19,38 +19,52 @@ function getCollection() {
   return collection(window.db, COLLECTION_NAME);
 }
 
-// ---------- Add Item with strict duplicate check ----------
-export async function addToWatchlist(item) {
+// Add or update: if exists, update status; else add new
+export async function addOrUpdateWatchlist(item) {
   try {
     const col = getCollection();
     const q = query(col, where("id", "==", item.id), where("category", "==", item.category));
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
-      console.log("Item already exists:", item.id, item.category);
-      return { success: false, error: "already_exists" };
+      // Update existing document's status
+      const docRef = snapshot.docs[0].ref;
+      await updateDoc(docRef, { status: item.status });
+      return { success: true, isUpdate: true, docId: snapshot.docs[0].id };
+    } else {
+      // Add new document
+      const docRef = await addDoc(col, {
+        id: item.id,
+        title: item.title,
+        poster: item.poster,
+        category: item.category,
+        status: item.status,
+        added: Date.now()
+      });
+      return { success: true, isUpdate: false, docId: docRef.id };
     }
-    const docRef = await addDoc(col, {
-      id: item.id,
-      title: item.title,
-      poster: item.poster,
-      category: item.category,
-      status: item.status,
-      added: Date.now()
-    });
-    console.log("Added:", docRef.id);
-    return { success: true, docId: docRef.id };
   } catch (error) {
-    console.error("Add error:", error);
+    console.error("Add/Update error:", error);
     return { success: false, error };
   }
 }
 
-// ---------- Remove Item ----------
+// Update status of a document by its Firestore ID
+export async function updateWatchlistStatus(docId, newStatus) {
+  try {
+    const docRef = doc(window.db, COLLECTION_NAME, docId);
+    await updateDoc(docRef, { status: newStatus });
+    return { success: true };
+  } catch (error) {
+    console.error("Update status error:", error);
+    return { success: false, error };
+  }
+}
+
+// Remove item
 export async function removeFromWatchlist(docId) {
   try {
     const docRef = doc(window.db, COLLECTION_NAME, docId);
     await deleteDoc(docRef);
-    console.log("Deleted:", docId);
     return { success: true };
   } catch (error) {
     console.error("Delete error:", error);
@@ -58,41 +72,7 @@ export async function removeFromWatchlist(docId) {
   }
 }
 
-// ---------- Update Item (supports category change) ----------
-export async function updateWatchlistItem(id, updates) {
-  try {
-    const col = getCollection();
-    const q = query(col, where("id", "==", id));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) return { success: false, error: "not_found" };
-    for (const docSnap of snapshot.docs) {
-      const oldData = docSnap.data();
-      const newCategory = updates.category;
-      if (newCategory && newCategory !== oldData.category) {
-        await deleteDoc(docSnap.ref);
-        const newItem = {
-          id: id,
-          title: updates.title || oldData.title,
-          poster: updates.poster || oldData.poster,
-          category: newCategory,
-          status: updates.status || oldData.status,
-          added: oldData.added || Date.now()
-        };
-        const newDocRef = await addDoc(col, newItem);
-        return { success: true, docId: newDocRef.id };
-      } else {
-        await updateDoc(docSnap.ref, updates);
-        return { success: true, docId: docSnap.id };
-      }
-    }
-    return { success: true };
-  } catch (error) {
-    console.error("Update error:", error);
-    return { success: false, error };
-  }
-}
-
-// ---------- Get Items by Status and Category ----------
+// Get items by status and category
 export async function getItemsByStatusAndCategory(status, category) {
   try {
     const col = getCollection();
@@ -111,7 +91,7 @@ export async function getItemsByStatusAndCategory(status, category) {
   }
 }
 
-// ---------- Get All Items ----------
+// Get all items (for debugging)
 export async function getAllWatchlist() {
   try {
     const col = getCollection();
@@ -124,7 +104,7 @@ export async function getAllWatchlist() {
   }
 }
 
-// ---------- Real-time Subscription ----------
+// Real-time subscription
 export function subscribeWatchlist(callback) {
   try {
     const col = getCollection();
@@ -140,9 +120,9 @@ export function subscribeWatchlist(callback) {
 }
 
 window.watchlist = {
-  add: addToWatchlist,
+  addOrUpdate: addOrUpdateWatchlist,
+  updateStatus: updateWatchlistStatus,
   remove: removeFromWatchlist,
-  update: updateWatchlistItem,
   getAll: getAllWatchlist,
   getByStatusAndCategory: getItemsByStatusAndCategory,
   subscribe: subscribeWatchlist
