@@ -1,943 +1,1136 @@
-// js/app.js – Fixed home page loading, robust error handling, skeleton removal
-import { addOrUpdateWatchlist, removeFromWatchlist, updateWatchlistStatus, getItemsByStatusAndCategory } from './watchlist.js';
+// js/app.js – shared app behaviour + Home and Watchlist page controllers (ES module)
+//
+// Responsibilities
+//   • theme + accent customisation, service-worker registration, install prompt
+//   • shared sheets: add-to-watchlist, movie/TV details, manage entry, appearance
+//   • Home page and Watchlist page controllers
+// Discover logic lives in js/discover.js, search logic in search.html.
+import {
+  addOrUpdateWatchlist,
+  removeFromWatchlist,
+  updateWatchlistStatus,
+  loadLibrary,
+  findEntriesByTmdbId,
+  STATUSES,
+  CATEGORIES,
+  normalizeStatus,
+  statusLabel,
+  categoryLabel
+} from './watchlist.js';
 
-let currentStatus = 'plan';
-let currentExpandedCategory = null;
-let currentItem = null;
-let currentAddItem = null;
-let isOpeningModal = false;
-let autoSlideInterval = null;
-let activeToast = null;
-let scrollThrottleTimer = null;
-let deferredPrompt = null;
+const UI = window.OrvionUI;
+const { el, icon, openModal, closeModal, bindModal } = UI;
 
-const CACHE_TTL = 60 * 60 * 1000;
+const $ = (id) => document.getElementById(id);
 
-// ---------- SKELETON HELPERS ----------
-function showHomeSkeleton() {
-  const hero = document.getElementById('heroCarousel');
-  const trending = document.getElementById('trendingScroll');
-  const popular = document.getElementById('popularScroll');
-  const topRated = document.getElementById('topRatedScroll');
+// =============================================================================
+// 1. THEME
+// =============================================================================
+const THEME_KEY = 'orvion-theme';
+const COLOR_KEY = 'orvion-color';
+const THEME_COLORS = { dark: '#0b0b0f', light: '#f4f3f8' };
+const ACCENTS = [
+  { value: 'purple', label: 'Violet', swatch: '#7c3aed' },
+  { value: 'blue', label: 'Blue', swatch: '#3b82f6' },
+  { value: 'red', label: 'Red', swatch: '#ef4444' },
+  { value: 'green', label: 'Green', swatch: '#10b981' }
+];
+const systemQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
-  // Only show skeleton if hero container exists (if using normal carousel; infinite carousel has its own loading)
-  if (hero && hero.children.length === 0) {
-    hero.innerHTML = '<div class="skeleton-card" style="width:70vw; max-width:260px; margin:12px auto;"></div>';
-  }
-  const addSkeletonRow = (container) => {
-    if (!container) return;
-    container.innerHTML = '';
-    for (let i = 0; i < 6; i++) {
-      const sk = document.createElement('div');
-      sk.className = 'skeleton-card';
-      container.appendChild(sk);
+function readPref(key, fallback) {
+  try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+}
+
+function writePref(key, value) {
+  try { localStorage.setItem(key, value); } catch (e) { /* storage unavailable – preference lasts for this visit only */ }
+}
+
+function applyTheme(mode) {
+  const resolved = mode === 'system' ? (systemQuery.matches ? 'dark' : 'light') : (mode === 'light' ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', resolved);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', THEME_COLORS[resolved]);
+}
+
+function applyAccent(color) {
+  const valid = ACCENTS.some((a) => a.value === color) ? color : 'purple';
+  document.documentElement.setAttribute('data-color', valid);
+}
+
+function initTheme() {
+  applyTheme(readPref(THEME_KEY, 'dark'));
+  applyAccent(readPref(COLOR_KEY, 'purple'));
+  systemQuery.addEventListener('change', () => {
+    if (readPref(THEME_KEY, 'dark') === 'system') applyTheme('system');
+  });
+}
+
+// =============================================================================
+// 2. SHARED FORM + SHEET HELPERS
+// =============================================================================
+let choiceSeq = 0;
+
+/** Accessible radio group rendered as tappable chips. */
+function choiceGroup(config) {
+  const name = 'choice-' + (++choiceSeq);
+  const fieldset = el('fieldset', { class: 'field' }, el('legend', { class: 'field-label', text: config.legend }));
+  const grid = el('div', { class: 'choice-grid cols-' + (config.columns || 2) });
+  const inputs = [];
+
+  config.options.forEach((opt) => {
+    const input = el('input', { attrs: { type: 'radio', name: name, value: opt.value } });
+    input.checked = opt.value === config.value;
+    input.addEventListener('change', () => { if (input.checked && config.onChange) config.onChange(opt.value); });
+    inputs.push(input);
+
+    const face = el('span', { class: 'choice-face' });
+    if (opt.swatch) {
+      const dot = el('span', { class: 'choice-swatch', attrs: { 'aria-hidden': 'true' } });
+      dot.style.background = opt.swatch;
+      face.appendChild(dot);
+    }
+    face.appendChild(el('span', { text: opt.label }));
+    grid.appendChild(el('label', { class: 'choice' }, input, face));
+  });
+
+  fieldset.appendChild(grid);
+  return {
+    node: fieldset,
+    get value() {
+      const checked = inputs.find((input) => input.checked);
+      return checked ? checked.value : null;
+    },
+    set(value) {
+      inputs.forEach((input) => { input.checked = input.value === value; });
     }
   };
-  addSkeletonRow(trending);
-  addSkeletonRow(popular);
-  addSkeletonRow(topRated);
 }
 
-function removeHomeSkeleton() {
-  // This is called after data loads to clear any leftover skeletons
-  const hero = document.getElementById('heroCarousel');
-  const trending = document.getElementById('trendingScroll');
-  const popular = document.getElementById('popularScroll');
-  const topRated = document.getElementById('topRatedScroll');
-  if (hero && hero.innerHTML.includes('skeleton-card')) {
-    hero.innerHTML = '';
-  }
-  // Rows will be overwritten anyway, but ensure they are not left with skeletons
-  if (trending && trending.innerHTML.includes('skeleton-card')) trending.innerHTML = '';
-  if (popular && popular.innerHTML.includes('skeleton-card')) popular.innerHTML = '';
-  if (topRated && topRated.innerHTML.includes('skeleton-card')) topRated.innerHTML = '';
+function createSheetRoot(id, titleId, extraClass) {
+  const root = el('div', { class: 'modal', attrs: { id: id, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId } });
+  const sheet = el('div', { class: 'sheet ' + (extraClass || '') });
+  root.appendChild(sheet);
+  document.body.appendChild(root);
+  bindModal(root);
+  return { root, sheet };
 }
 
-function showDiscoverSkeleton() {
-  const grid = document.getElementById('discoverGrid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  for (let i = 0; i < 12; i++) {
-    const sk = document.createElement('div');
-    sk.className = 'skeleton-card';
-    grid.appendChild(sk);
-  }
+function setBusy(button, busy) {
+  button.disabled = busy;
+  button.classList.toggle('is-busy', busy);
+  button.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
-function showWatchlistSkeleton() {
-  const container = document.getElementById('watchlistContent');
-  if (!container) return;
-  container.innerHTML = '<div class="loading-spinner">Loading...</div>';
+function dispatchWatchlistChanged() {
+  window.dispatchEvent(new CustomEvent('orvion:watchlist-changed'));
 }
 
-// ---------- CACHE HELPERS ----------
-function getCachedData(key) {
-  const cached = localStorage.getItem(key);
-  if (!cached) return null;
-  const { data, timestamp } = JSON.parse(cached);
-  if (Date.now() - timestamp > CACHE_TTL) {
-    localStorage.removeItem(key);
-    return null;
-  }
-  return data;
-}
-
-function setCachedData(key, data) {
-  localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
-}
-
-// ---------- TOAST SYSTEM ----------
-function showToast(msg, type = 'success') {
-  if (activeToast) {
-    activeToast.classList.remove('show');
-    setTimeout(() => {
-      if (activeToast && activeToast.parentNode) activeToast.remove();
-      activeToast = null;
-      createToast(msg, type);
-    }, 200);
-  } else {
-    createToast(msg, type);
-  }
-}
-
-function createToast(msg, type) {
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  activeToast = toast;
-  setTimeout(() => toast.classList.add('show'), 10);
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => {
-      if (toast.parentNode) toast.remove();
-      if (activeToast === toast) activeToast = null;
-    }, 300);
-  }, 2000);
-}
-
-// ---------- THEME SYSTEM ----------
-function initTheme() {
-  const savedTheme = localStorage.getItem('orvion-theme') || 'dark';
-  const savedColor = localStorage.getItem('orvion-color') || 'purple';
-  document.documentElement.setAttribute('data-theme', savedTheme);
-  document.documentElement.setAttribute('data-color', savedColor);
-  if (savedTheme === 'system') {
-    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.setAttribute('data-theme', systemDark ? 'dark' : 'light');
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-      if (localStorage.getItem('orvion-theme') === 'system') {
-        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
-      }
-    });
-  }
-}
+// =============================================================================
+// 3. APPEARANCE SHEET
+// =============================================================================
+let appearanceSheet = null;
 
 function showThemeSettings() {
-  let modal = document.getElementById('themeSettingsModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'themeSettingsModal';
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content glass" style="width: 280px;">
-        <h3>Customize</h3>
-        <div class="theme-option-group">
-          <label>Mode</label>
-          <div class="theme-buttons">
-            <button data-mode="dark">Dark</button>
-            <button data-mode="light">Light</button>
-            <button data-mode="system">System</button>
-          </div>
-        </div>
-        <div class="theme-option-group">
-          <label>Accent Color</label>
-          <div class="color-buttons">
-            <button data-color="purple" style="background:#7c3aed"></button>
-            <button data-color="blue" style="background:#3b82f6"></button>
-            <button data-color="red" style="background:#ef4444"></button>
-            <button data-color="green" style="background:#10b981"></button>
-          </div>
-        </div>
-        <button class="btn glass-btn" id="closeThemeModal">Close</button>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) modal.classList.remove('show');
+  if (!appearanceSheet) {
+    const { root, sheet } = createSheetRoot('themeSettingsModal', 'appearanceTitle', 'compact-sheet');
+    const modeGroup = choiceGroup({
+      legend: 'Mode',
+      columns: 3,
+      value: readPref(THEME_KEY, 'dark'),
+      options: [
+        { value: 'dark', label: 'Dark' },
+        { value: 'light', label: 'Light' },
+        { value: 'system', label: 'System' }
+      ],
+      onChange: (value) => { writePref(THEME_KEY, value); applyTheme(value); }
     });
-    modal.querySelector('#closeThemeModal').addEventListener('click', () => {
-      modal.classList.remove('show');
+    const accentGroup = choiceGroup({
+      legend: 'Accent color',
+      columns: 2,
+      value: readPref(COLOR_KEY, 'purple'),
+      options: ACCENTS,
+      onChange: (value) => { writePref(COLOR_KEY, value); applyAccent(value); }
     });
-    modal.querySelectorAll('[data-mode]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const mode = btn.dataset.mode;
-        localStorage.setItem('orvion-theme', mode);
-        if (mode === 'system') {
-          const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          document.documentElement.setAttribute('data-theme', systemDark ? 'dark' : 'light');
-        } else {
-          document.documentElement.setAttribute('data-theme', mode);
-        }
-        modal.classList.remove('show');
-      });
-    });
-    modal.querySelectorAll('[data-color]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const color = btn.dataset.color;
-        localStorage.setItem('orvion-color', color);
-        document.documentElement.setAttribute('data-color', color);
-        modal.classList.remove('show');
-      });
-    });
+    sheet.append(
+      el('div', { class: 'sheet-head' }, el('h3', { class: 'sheet-title', text: 'Appearance', attrs: { id: 'appearanceTitle' } })),
+      el('div', { class: 'sheet-body' }, modeGroup.node, accentGroup.node),
+      el('div', { class: 'sheet-actions' },
+        el('button', { class: 'btn btn-primary btn-block', text: 'Done', attrs: { type: 'button' }, on: { click: () => closeModal(root) } }))
+    );
+    appearanceSheet = { root, modeGroup, accentGroup };
   }
-  modal.classList.add('show');
+  appearanceSheet.modeGroup.set(readPref(THEME_KEY, 'dark'));
+  appearanceSheet.accentGroup.set(readPref(COLOR_KEY, 'purple'));
+  openModal(appearanceSheet.root);
 }
 
-// ---------- MODAL INITIALIZATION ----------
-function initModals() {
-  const cancelBtn = document.getElementById('modalCancel');
-  const saveBtn = document.getElementById('modalSave');
-  const closeDetailsBtn = document.getElementById('closeDetails');
-  const detailsModal = document.getElementById('detailsModal');
-  const detailsAddBtn = document.getElementById('detailsAddBtn');
+// =============================================================================
+// 4. ADD / UPDATE SHEET
+// =============================================================================
+let addSheet = null;
+let addItem = null;
+let addLookupToken = 0;
 
-  if (cancelBtn) {
-    cancelBtn.removeEventListener('click', hideAddModal);
-    cancelBtn.addEventListener('click', hideAddModal);
-  }
+function ensureAddSheet() {
+  if (addSheet) return addSheet;
+  const { root, sheet } = createSheetRoot('addModal', 'addModalTitle');
+  const title = el('h3', { class: 'sheet-title', text: 'Add to watchlist', attrs: { id: 'addModalTitle' } });
+  const sub = el('p', { class: 'sheet-sub' });
+  const hint = el('p', { class: 'sheet-hint', attrs: { hidden: true } });
 
-  if (saveBtn) {
-    const newSaveBtn = saveBtn.cloneNode(true);
-    saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-    const freshSaveBtn = document.getElementById('modalSave');
-    freshSaveBtn.addEventListener('click', async () => {
-      if (!currentAddItem) return;
-      const category = document.querySelector('#categoryDropdown .dropdown-option.selected')?.dataset.value || 'movie';
-      const status = document.querySelector('#statusDropdown .dropdown-option.selected')?.dataset.value || 'plan';
-      const item = {
-        id: currentAddItem.id,
-        title: currentAddItem.title,
-        poster: currentAddItem.poster,
-        category,
-        status
-      };
-      const result = await addOrUpdateWatchlist(item);
-      if (result.success) {
-        if (result.isUpdate) {
-          const statusText = status.charAt(0).toUpperCase() + status.slice(1);
-          showToast(`Status updated to ${statusText}`, 'success');
-        } else {
-          showToast('Added to watchlist', 'success');
-        }
-        if (document.body.classList.contains('watchlist-page')) {
-          await renderWatchlist();
-        }
-      } else {
-        showToast('Error saving item', 'error');
-      }
-      hideAddModal();
-    });
-  }
+  const categoryGroup = choiceGroup({
+    legend: 'Category',
+    columns: 2,
+    value: 'movie',
+    options: CATEGORIES.map((c) => ({ value: c.value, label: c.label }))
+  });
+  const statusGroup = choiceGroup({
+    legend: 'Status',
+    columns: 2,
+    value: 'plan',
+    options: STATUSES.map((s) => ({ value: s.value, label: s.label }))
+  });
 
-  if (closeDetailsBtn) {
-    closeDetailsBtn.removeEventListener('click', hideDetailsModal);
-    closeDetailsBtn.addEventListener('click', hideDetailsModal);
-  }
-  if (detailsModal) {
-    detailsModal.removeEventListener('click', hideDetailsModal);
-    detailsModal.addEventListener('click', (e) => {
-      if (e.target === detailsModal) hideDetailsModal();
-    });
-  }
-  if (detailsAddBtn) {
-    detailsAddBtn.removeEventListener('click', detailsAddHandler);
-    detailsAddBtn.addEventListener('click', detailsAddHandler);
-  }
+  const cancel = el('button', { class: 'btn btn-glass', text: 'Cancel', attrs: { type: 'button' }, on: { click: () => closeModal(root) } });
+  const save = el('button', { class: 'btn btn-primary', attrs: { type: 'button', id: 'modalSave' } },
+    el('span', { class: 'btn-label', text: 'Save' }));
+
+  sheet.append(
+    el('div', { class: 'sheet-head' }, title, sub, hint),
+    el('div', { class: 'sheet-body' }, categoryGroup.node, statusGroup.node),
+    el('div', { class: 'sheet-actions' }, cancel, save)
+  );
+
+  save.addEventListener('click', saveAddSheet);
+  addSheet = { root, title, sub, hint, categoryGroup, statusGroup, save, label: save.querySelector('.btn-label') };
+  return addSheet;
 }
 
-function detailsAddHandler() {
-  if (!currentItem) return;
-  currentAddItem = {
-    id: currentItem.id,
-    title: currentItem.title || currentItem.name,
-    poster: currentItem.poster_path ? window.IMG_BASE + currentItem.poster_path : 'https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Poster'
-  };
-  showAddModal(currentAddItem);
-}
-
+/** Open the add sheet for { id, title, poster, type } (type is "movie" | "tv"). */
 function showAddModal(item) {
-  currentAddItem = item;
-  const categoryDropdown = document.querySelector('#categoryDropdown');
-  const statusDropdown = document.querySelector('#statusDropdown');
-  if (categoryDropdown) {
-    const defaultOption = categoryDropdown.querySelector('.dropdown-option[data-value="movie"]');
-    if (defaultOption) {
-      categoryDropdown.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
-      defaultOption.classList.add('selected');
-      categoryDropdown.querySelector('.dropdown-selected').textContent = defaultOption.textContent;
-    }
-  }
-  if (statusDropdown) {
-    const defaultOption = statusDropdown.querySelector('.dropdown-option[data-value="plan"]');
-    if (defaultOption) {
-      statusDropdown.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
-      defaultOption.classList.add('selected');
-      statusDropdown.querySelector('.dropdown-selected').textContent = defaultOption.textContent;
-    }
-  }
-  document.body.classList.add('modal-open');
-  document.getElementById('addModal').classList.add('show');
+  if (!item || !item.id) return;
+  const sheet = ensureAddSheet();
+  const current = {
+    id: Number(item.id),
+    title: String(item.title || '').trim(),
+    poster: typeof item.poster === 'string' ? item.poster : '',
+    type: item.type === 'tv' ? 'tv' : 'movie'
+  };
+  addItem = current;
+
+  sheet.title.textContent = 'Add to watchlist';
+  sheet.sub.textContent = current.title;
+  sheet.hint.hidden = true;
+  sheet.hint.textContent = '';
+  sheet.label.textContent = 'Save';
+  sheet.categoryGroup.set(current.type === 'tv' ? 'series' : 'movie');
+  sheet.statusGroup.set('plan');
+  setBusy(sheet.save, false);
+  openModal(sheet.root, { initialFocus: 'input:checked' });
+
+  // Pre-select the existing entry (if any) so "Update" is the obvious action.
+  const token = ++addLookupToken;
+  findEntriesByTmdbId(current.id).then((result) => {
+    if (token !== addLookupToken || addItem !== current || !result.success || !result.items.length) return;
+    const first = result.items[0];
+    if (CATEGORIES.some((c) => c.value === first.category)) sheet.categoryGroup.set(first.category);
+    sheet.statusGroup.set(normalizeStatus(first.status));
+    sheet.title.textContent = 'Update watchlist entry';
+    sheet.label.textContent = 'Update';
+    sheet.hint.textContent = 'In your list: ' + result.items.map((e) => categoryLabel(e.category) + ' · ' + statusLabel(e.status)).join(', ');
+    sheet.hint.hidden = false;
+  });
 }
 
-function hideAddModal() {
-  document.body.classList.remove('modal-open');
-  document.getElementById('addModal').classList.remove('show');
-  currentAddItem = null;
+async function saveAddSheet() {
+  const sheet = addSheet;
+  if (!sheet || !addItem || sheet.save.disabled) return;
+  const category = sheet.categoryGroup.value;
+  const status = sheet.statusGroup.value;
+  const item = { id: addItem.id, title: addItem.title, poster: addItem.poster, category, status };
+
+  setBusy(sheet.save, true);
+  const result = await addOrUpdateWatchlist(item);
+  setBusy(sheet.save, false);
+
+  if (!result.success) {
+    UI.showToast(result.message || 'Error saving item', 'error');
+    return; // keep the sheet open so nothing the user chose is lost
+  }
+
+  if (result.unchanged) UI.showToast('Already in your list as ' + statusLabel(status), 'info');
+  else if (result.isUpdate) UI.showToast('Moved to ' + statusLabel(status), 'success');
+  else UI.showToast('Added to watchlist', 'success');
+
+  closeModal(sheet.root);
+  dispatchWatchlistChanged();
+  refreshDetailsStatus();
 }
 
-// ---------- HOME PAGE (FIXED) ----------
-async function loadHome() {
-  console.log('loadHome started');
-  const heroContainer = document.getElementById('heroCarousel');
-  const trendingScroll = document.getElementById('trendingScroll');
-  const popularScroll = document.getElementById('popularScroll');
-  const topRatedScroll = document.getElementById('topRatedScroll');
+// =============================================================================
+// 5. DETAILS SHEET
+// =============================================================================
+let detailsSheet = null;
+let detailsToken = 0;
+let detailsAbort = null;
+let detailsCurrent = null; // { id, type, item }
 
-  // If hero container doesn't exist (maybe infinite carousel is used), skip hero loading
-  const hasHero = heroContainer !== null;
-  if (!hasHero) {
-    console.log('Hero container not found, skipping hero loading');
+function ensureDetailsSheet() {
+  if (detailsSheet) return detailsSheet;
+  const { root, sheet } = createSheetRoot('detailsModal', 'detailsTitle', 'details');
+  const closeBtn = el('button', {
+    class: 'details-close icon-btn glass',
+    attrs: { type: 'button', 'aria-label': 'Close details' },
+    on: { click: () => closeModal(root) }
+  }, icon('close', 20));
+  const scroll = el('div', { class: 'details-scroll' });
+  sheet.append(closeBtn, scroll);
+  detailsSheet = { root, scroll };
+  return detailsSheet;
+}
+
+function formatRuntime(minutes) {
+  const m = Number(minutes);
+  if (!m || m < 1) return '';
+  if (m < 60) return m + ' min';
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  return rest ? h + 'h ' + rest + 'm' : h + 'h';
+}
+
+function renderDetailsLoading() {
+  detailsSheet.scroll.replaceChildren(
+    el('div', { class: 'details-hero skeleton-block' }),
+    el('div', { class: 'details-main' },
+      el('div', { class: 'details-poster' }, el('span', { class: 'card-poster skeleton-block' })),
+      el('div', { class: 'details-head' },
+        el('h2', { class: 'details-title', text: 'Loading…', attrs: { id: 'detailsTitle' } }),
+        el('div', { class: 'skeleton-line short' })
+      ),
+      el('div', { class: 'details-body' },
+        el('div', { class: 'skeleton-line' }),
+        el('div', { class: 'skeleton-line' }),
+        el('div', { class: 'skeleton-line short' })
+      )
+    )
+  );
+}
+
+function renderDetailsError(id, type) {
+  detailsSheet.scroll.replaceChildren(
+    el('div', { class: 'details-error' },
+      el('h2', { class: 'sr-only', text: 'Details unavailable', attrs: { id: 'detailsTitle' } }),
+      UI.createState({
+        kind: 'error',
+        icon: 'alert',
+        title: "Couldn't load details",
+        text: navigator.onLine === false ? "You're offline." : 'The movie database did not respond.',
+        actionLabel: 'Try again',
+        actionIcon: 'refresh',
+        onAction: () => showItemDetails(id, type)
+      })
+    )
+  );
+}
+
+function renderDetails(item, type) {
+  const title = UI.titleOf(item);
+  const year = UI.yearOf(item);
+  const rating = UI.ratingOf(item);
+  const runtime = formatRuntime(item.runtime || (Array.isArray(item.episode_run_time) ? item.episode_run_time[0] : 0));
+  const seasons = Number(item.number_of_seasons) > 0 ? item.number_of_seasons + (item.number_of_seasons === 1 ? ' season' : ' seasons') : '';
+
+  // Hero backdrop
+  const hero = el('div', { class: 'details-hero' });
+  if (item.backdrop_path) {
+    const backdrop = el('img', { class: 'details-backdrop', attrs: { alt: '', decoding: 'async', draggable: 'false' } });
+    backdrop.addEventListener('load', () => backdrop.classList.add('loaded'));
+    backdrop.addEventListener('error', () => backdrop.remove());
+    backdrop.src = window.tmdbImage(item.backdrop_path, 'w780');
+    hero.appendChild(backdrop);
+  }
+  hero.appendChild(el('div', { class: 'details-hero-scrim', attrs: { 'aria-hidden': 'true' } }));
+
+  // Poster
+  const poster = el('div', { class: 'details-poster' }, el('span', { class: 'card-poster' }, UI.posterFallback()));
+  if (item.poster_path) {
+    poster.firstChild.appendChild(UI.posterImage(window.tmdbImage(item.poster_path, 'w342'), title + ' poster', { eager: true }));
+  }
+
+  // Meta line
+  const meta = el('p', { class: 'details-meta' });
+  if (rating) meta.appendChild(el('span', { class: 'meta-rating' }, icon('star', 14), el('span', { text: rating })));
+  [year, UI.typeLabel(type), runtime || seasons].filter(Boolean).forEach((part) => meta.appendChild(el('span', { text: part })));
+
+  // Genres
+  const genres = el('div', { class: 'details-genres' });
+  (Array.isArray(item.genres) ? item.genres : []).forEach((g) => {
+    if (g && g.name) genres.appendChild(el('span', { class: 'genre-tag', text: g.name }));
+  });
+
+  // Actions
+  const addBtn = el('button', { class: 'btn btn-primary', attrs: { type: 'button', id: 'detailsAddBtn' } },
+    icon('plus', 18), el('span', { class: 'btn-label', text: 'Add to watchlist' }));
+  addBtn.addEventListener('click', () => {
+    showAddModal({ id: item.id, title: title, poster: UI.storedPoster(item), type: type });
+  });
+  const actions = el('div', { class: 'details-actions' }, addBtn);
+
+  const videos = item.videos && Array.isArray(item.videos.results) ? item.videos.results : [];
+  const trailer = videos.find((v) => v && v.type === 'Trailer' && v.site === 'YouTube' && /^[\w-]{6,20}$/.test(v.key || ''));
+  if (trailer) {
+    actions.appendChild(el('a', {
+      class: 'btn btn-glass',
+      attrs: { href: 'https://www.youtube.com/watch?v=' + trailer.key, target: '_blank', rel: 'noopener noreferrer' }
+    }, icon('play', 18), 'Trailer'));
+  }
+
+  const head = el('div', { class: 'details-head' },
+    el('h2', { class: 'details-title', text: title, attrs: { id: 'detailsTitle' } })
+  );
+  if (item.tagline) head.appendChild(el('p', { class: 'details-tagline', text: item.tagline }));
+  head.append(meta, genres);
+
+  const body = el('div', { class: 'details-body' },
+    el('div', { class: 'details-status', attrs: { 'aria-live': 'polite' } }),
+    actions,
+    el('h3', { class: 'details-heading', text: 'Overview' }),
+    el('p', { class: 'details-overview', text: item.overview || 'No overview available.' })
+  );
+
+  // Cast
+  const cast = (item.credits && Array.isArray(item.credits.cast) ? item.credits.cast : []).filter((a) => a && a.name).slice(0, 10);
+  if (cast.length) {
+    const row = el('ul', { class: 'cast-row' });
+    cast.forEach((actor) => {
+      const avatar = el('span', { class: 'cast-avatar', attrs: { 'aria-hidden': 'true' } }, el('span', { text: actor.name.trim().charAt(0).toUpperCase() }));
+      if (actor.profile_path) {
+        const img = el('img', { attrs: { alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' } });
+        img.addEventListener('error', () => img.remove());
+        img.src = window.tmdbImage(actor.profile_path, 'w185');
+        avatar.appendChild(img);
+      }
+      row.appendChild(el('li', { class: 'cast-item' },
+        avatar,
+        el('span', { class: 'cast-name', text: actor.name }),
+        actor.character ? el('span', { class: 'cast-role', text: actor.character }) : null
+      ));
+    });
+    body.append(el('h3', { class: 'details-heading', text: 'Cast' }), row);
+  }
+
+  detailsSheet.scroll.replaceChildren(hero, el('div', { class: 'details-main' }, poster, head, body));
+  detailsSheet.scroll.scrollTop = 0;
+}
+
+/** Show which list(s) this title is already in, and relabel the main button accordingly. */
+async function refreshDetailsStatus() {
+  const current = detailsCurrent;
+  if (!current || !detailsSheet) return;
+  const result = await findEntriesByTmdbId(current.id);
+  if (detailsCurrent !== current) return;
+  const holder = detailsSheet.scroll.querySelector('.details-status');
+  const label = detailsSheet.scroll.querySelector('#detailsAddBtn .btn-label');
+  if (!holder || !label) return;
+
+  holder.replaceChildren();
+  if (result.success && result.items.length) {
+    result.items.forEach((entry) => {
+      holder.appendChild(el('span', { class: 'status-pill' },
+        el('span', { class: 'status-dot', attrs: { 'data-status': normalizeStatus(entry.status) } }),
+        el('span', { text: categoryLabel(entry.category) + ' · ' + statusLabel(entry.status) })
+      ));
+    });
+    label.textContent = 'Update status';
+  } else {
+    label.textContent = 'Add to watchlist';
+  }
+}
+
+async function showItemDetails(id, type) {
+  const numericId = Number(id);
+  const kind = type === 'tv' ? 'tv' : type === 'movie' ? 'movie' : null;
+  if (!numericId || !kind) {
+    console.error('Invalid item data', { id, type });
+    return;
+  }
+
+  const sheet = ensureDetailsSheet();
+  if (detailsAbort) detailsAbort.abort();
+  detailsAbort = new AbortController();
+  const token = ++detailsToken;
+  detailsCurrent = null;
+
+  renderDetailsLoading();
+  openModal(sheet.root, { initialFocus: '.details-close' });
+
+  const item = kind === 'movie'
+    ? await window.fetchMovieDetails(numericId, { signal: detailsAbort.signal })
+    : await window.fetchTVDetails(numericId, { signal: detailsAbort.signal });
+  if (token !== detailsToken) return; // a newer request replaced this one
+
+  if (!item) {
+    renderDetailsError(numericId, kind);
+    return;
+  }
+  detailsCurrent = { id: numericId, type: kind, item };
+  renderDetails(item, kind);
+  refreshDetailsStatus();
+}
+
+// =============================================================================
+// 6. MANAGE-ENTRY SHEET (watchlist page): change status or remove, with confirmation
+// =============================================================================
+let manageSheet = null;
+let manageEntry = null;
+
+function ensureManageSheet() {
+  if (manageSheet) return manageSheet;
+  const { root, sheet } = createSheetRoot('manageModal', 'manageTitle');
+  const title = el('h3', { class: 'sheet-title', text: 'Manage entry', attrs: { id: 'manageTitle' } });
+  const sub = el('p', { class: 'sheet-sub' });
+  const statusGroup = choiceGroup({
+    legend: 'Status',
+    columns: 2,
+    value: 'plan',
+    options: STATUSES.map((s) => ({ value: s.value, label: s.label }))
+  });
+
+  const removeBtn = el('button', { class: 'btn btn-danger', attrs: { type: 'button' } }, icon('trash', 18), 'Remove');
+  const cancelBtn = el('button', { class: 'btn btn-glass', text: 'Cancel', attrs: { type: 'button' }, on: { click: () => closeModal(root) } });
+  const saveBtn = el('button', { class: 'btn btn-primary', attrs: { type: 'button' } }, el('span', { class: 'btn-label', text: 'Save' }));
+  const mainActions = el('div', { class: 'sheet-actions' }, removeBtn, cancelBtn, saveBtn);
+
+  const confirmText = el('p', { class: 'confirm-text' });
+  const keepBtn = el('button', { class: 'btn btn-glass', text: 'Keep it', attrs: { type: 'button' } });
+  const confirmBtn = el('button', { class: 'btn btn-danger-solid', attrs: { type: 'button' } }, el('span', { class: 'btn-label', text: 'Remove' }));
+  const confirmBox = el('div', { class: 'confirm-box', attrs: { hidden: true, role: 'alertdialog' } },
+    confirmText, el('div', { class: 'sheet-actions' }, keepBtn, confirmBtn));
+
+  sheet.append(
+    el('div', { class: 'sheet-head' }, title, sub),
+    el('div', { class: 'sheet-body' }, statusGroup.node),
+    mainActions,
+    confirmBox
+  );
+
+  const showConfirm = (visible) => {
+    confirmBox.hidden = !visible;
+    mainActions.hidden = visible;
+    if (visible) confirmBtn.focus();
+  };
+
+  removeBtn.addEventListener('click', () => {
+    if (!manageEntry) return;
+    confirmText.textContent = 'Remove “' + (manageEntry.title || 'this title') + '” from your watchlist? This can’t be undone.';
+    showConfirm(true);
+  });
+  keepBtn.addEventListener('click', () => { showConfirm(false); removeBtn.focus(); });
+
+  saveBtn.addEventListener('click', async () => {
+    const entry = manageEntry;
+    if (!entry || saveBtn.disabled) return;
+    const newStatus = statusGroup.value;
+    if (newStatus === normalizeStatus(entry.status)) { closeModal(root); return; }
+    setBusy(saveBtn, true);
+    const result = await updateWatchlistStatus(entry.docId, newStatus);
+    setBusy(saveBtn, false);
+    if (!result.success) { UI.showToast(result.message || 'Failed to update status', 'error'); return; }
+    watchlistState.apply(entry.docId, (e) => { e.status = newStatus; });
+    UI.showToast('Moved to ' + statusLabel(newStatus), 'success');
+    closeModal(root);
+  });
+
+  confirmBtn.addEventListener('click', async () => {
+    const entry = manageEntry;
+    if (!entry || confirmBtn.disabled) return;
+    setBusy(confirmBtn, true);
+    const result = await removeFromWatchlist(entry.docId);
+    setBusy(confirmBtn, false);
+    if (!result.success) { UI.showToast(result.message || 'Error removing item', 'error'); return; }
+    watchlistState.remove(entry.docId);
+    UI.showToast('Removed from watchlist', 'success');
+    closeModal(root);
+  });
+
+  manageSheet = { root, sub, statusGroup, showConfirm };
+  return manageSheet;
+}
+
+function showManageSheet(entry) {
+  if (!entry || !entry.docId) return;
+  const sheet = ensureManageSheet();
+  manageEntry = entry;
+  sheet.sub.textContent = entry.title || '';
+  sheet.statusGroup.set(normalizeStatus(entry.status));
+  sheet.showConfirm(false);
+  openModal(sheet.root, { initialFocus: 'input:checked' });
+}
+
+// =============================================================================
+// 7. HOME PAGE
+// =============================================================================
+const CACHE_TTL = 60 * 60 * 1000;
+const HOME_SECTIONS = [
+  { key: 'trending', rowId: 'trendingScroll', label: 'Trending', type: 'movie', fetch: () => window.fetchTrending() },
+  { key: 'popular', rowId: 'popularScroll', label: 'Popular', type: 'movie', fetch: () => window.fetchPopular() },
+  { key: 'topRated', rowId: 'topRatedScroll', label: 'Top Rated', type: 'movie', fetch: () => window.fetchTopRated() },
+  { key: 'tvPopular', rowId: 'tvScroll', label: 'Popular TV', type: 'tv', fetch: () => window.fetchTVPopular() }
+];
+
+function readCache(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('orvion:cache:' + key) || 'null');
+    if (parsed && parsed.data && Array.isArray(parsed.data.results)) return parsed;
+  } catch (e) { /* corrupt or unavailable */ }
+  return null;
+}
+
+function writeCache(key, data) {
+  try {
+    localStorage.setItem('orvion:cache:' + key, JSON.stringify({
+      data: { results: data.results, total_pages: data.total_pages },
+      timestamp: Date.now()
+    }));
+  } catch (e) { /* quota or privacy mode – caching is optional */ }
+}
+
+/** Fetch one home collection: fresh cache → network → stale cache. Failures are never cached. */
+async function resolveSection(section, force) {
+  const cached = readCache(section.key);
+  if (cached && !force && Date.now() - Number(cached.timestamp || 0) < CACHE_TTL) {
+    return { ok: true, data: cached.data, cached: true };
+  }
+
+  if (!section || typeof section.fetch !== 'function') {
+    return { ok: false, error: { kind: 'configuration', message: 'This home section is not configured.' } };
   }
 
   try {
-    // Fetch data with caching
-    let trendingData = getCachedData('trending');
-    let popularData = getCachedData('popular');
-    let topRatedData = getCachedData('topRated');
-
-    if (!trendingData || !popularData || !topRatedData) {
-      console.log('Fetching fresh data for home');
-      const [trendingRes, popularRes, topRatedRes] = await Promise.all([
-        window.fetchTrending().catch(err => { console.error("Trending fetch failed:", err); return { results: [], total_pages: 1 }; }),
-        window.fetchPopular().catch(err => { console.error("Popular fetch failed:", err); return { results: [], total_pages: 1 }; }),
-        window.fetchTopRated().catch(err => { console.error("TopRated fetch failed:", err); return { results: [], total_pages: 1 }; })
-      ]);
-      trendingData = trendingRes;
-      popularData = popularRes;
-      topRatedData = topRatedRes;
-      setCachedData('trending', trendingData);
-      setCachedData('popular', popularData);
-      setCachedData('topRated', topRatedData);
+    const response = await section.fetch();
+    if (response && response.ok === true && Array.isArray(response.results)) {
+      if (response.results.length) writeCache(section.key, response);
+      return { ok: true, data: response };
     }
 
-    const trendingMovies = trendingData.results || [];
-    const popularMovies = popularData.results || [];
-    const topRatedMovies = topRatedData.results || [];
-
-    // Hero carousel – if container exists and we have movies, populate it
-    if (hasHero && trendingMovies.length) {
-      // Shuffle and pick top 10 for hero
-      const allMovies = [...trendingMovies, ...popularMovies, ...topRatedMovies];
-      const shuffled = allMovies.sort(() => 0.5 - Math.random());
-      const heroMovies = shuffled.slice(0, 10);
-      heroContainer.innerHTML = '';
-      heroMovies.forEach(movie => {
-        if (movie && movie.id) {
-          heroContainer.appendChild(window.createHeroCard(movie));
-        }
-      });
-      setTimeout(() => window.centerFirstHeroCard(heroContainer), 100);
-      const firstCard = heroContainer.querySelector('.hero-card');
-      if (firstCard) firstCard.classList.add('active');
-      window.enableDragScroll(heroContainer);
-      window.observeHeroCards(heroContainer);
-    } else if (hasHero) {
-      heroContainer.innerHTML = '<div class="empty-message">No movies available</div>';
-    }
-
-    // Populate trending row
-    if (trendingScroll) {
-      trendingScroll.style.opacity = '0';
-      trendingScroll.innerHTML = '';
-      trendingMovies.slice(0, 12).forEach(m => trendingScroll.appendChild(window.createSmallCard(m)));
-      setTimeout(() => {
-        trendingScroll.style.transition = 'opacity 0.3s';
-        trendingScroll.style.opacity = '1';
-      }, 50);
-    }
-
-    // Populate popular row
-    if (popularScroll) {
-      popularScroll.style.opacity = '0';
-      popularScroll.innerHTML = '';
-      popularMovies.slice(0, 12).forEach(m => popularScroll.appendChild(window.createSmallCard(m)));
-      setTimeout(() => {
-        popularScroll.style.transition = 'opacity 0.3s';
-        popularScroll.style.opacity = '1';
-      }, 50);
-    }
-
-    // Populate top rated row
-    if (topRatedScroll) {
-      topRatedScroll.style.opacity = '0';
-      topRatedScroll.innerHTML = '';
-      topRatedMovies.slice(0, 12).forEach(m => topRatedScroll.appendChild(window.createSmallCard(m)));
-      setTimeout(() => {
-        topRatedScroll.style.transition = 'opacity 0.3s';
-        topRatedScroll.style.opacity = '1';
-      }, 50);
-    }
-
-    // Clear skeletons explicitly
-    removeHomeSkeleton();
-    console.log('Home page loaded successfully');
+    const error = response && response.error ? response.error : { kind: 'empty-response' };
+    if (cached && Array.isArray(cached.data.results)) return { ok: true, data: cached.data, stale: true, error };
+    return { ok: false, error };
   } catch (error) {
-    console.error("Home load error:", error);
-    if (heroContainer && hasHero) heroContainer.innerHTML = '<div class="empty-message">Failed to load movies</div>';
-    if (trendingScroll) trendingScroll.innerHTML = '<div class="empty-message">Failed to load</div>';
-    if (popularScroll) popularScroll.innerHTML = '<div class="empty-message">Failed to load</div>';
-    if (topRatedScroll) topRatedScroll.innerHTML = '<div class="empty-message">Failed to load</div>';
-    removeHomeSkeleton();
+    console.error('Home section failed:', section.key, error);
+    if (cached && Array.isArray(cached.data.results)) return { ok: true, data: cached.data, stale: true, error };
+    return { ok: false, error };
   }
 }
 
-// ---------- DISCOVER LOGIC (unchanged, but included for completeness) ----------
-let discoverIndicator = null;
-let currentDiscoverType = 'movie';
-let discoverPage = 1;
-let discoverLoading = false;
-let discoverHasMore = true;
+function homeApiErrorText(error) {
+  if (typeof window.describeTMDBError === 'function') return window.describeTMDBError(error);
+  if (navigator.onLine === false) return 'You’re offline. Reconnect and try again.';
+  return 'The movie database did not respond. Please try again.';
+}
 
-function initDiscoverTabs() {
-  const tabsContainer = document.querySelector('.discover-tabs');
-  if (!tabsContainer) return;
-  if (!discoverIndicator) {
-    discoverIndicator = document.createElement('div');
-    discoverIndicator.className = 'tab-indicator';
-    tabsContainer.appendChild(discoverIndicator);
+async function loadHomeSection(section, force) {
+  const row = $(section.rowId);
+  if (!row) return null;
+
+  row.setAttribute('aria-busy', 'true');
+  row.replaceChildren(UI.skeletonCards(8));
+
+  try {
+    const outcome = await resolveSection(section, force);
+    row.removeAttribute('aria-busy');
+
+    if (!outcome || !outcome.ok) {
+      row.replaceChildren(UI.createState({
+        kind: 'error',
+        compact: true,
+        icon: navigator.onLine === false ? 'wifiOff' : 'alert',
+        title: 'Couldn’t load ' + section.label,
+        text: homeApiErrorText(outcome && outcome.error),
+        actionLabel: 'Retry',
+        actionIcon: 'refresh',
+        onAction: () => loadHomeSection(section, true).then((again) => {
+          if (Array.isArray(again) && again.length && section.key === 'trending') renderHero(again);
+        })
+      }));
+      return null;
+    }
+
+    const items = (Array.isArray(outcome.data && outcome.data.results) ? outcome.data.results : [])
+      .filter((item) => item && item.id)
+      .slice(0, 16);
+
+    if (!items.length) {
+      row.replaceChildren(UI.createState({ compact: true, icon: 'film', title: 'Nothing to show right now', text: 'Check back a little later.' }));
+      return items;
+    }
+
+    const cards = items.map((item) => window.createSmallCard(item, section.type));
+    row.replaceChildren(...cards);
+    UI.stagger(cards);
+    row.dispatchEvent(new Event('scroll'));
+    return items;
+  } catch (error) {
+    console.error('Could not render home section:', section && section.key, error);
+    row.removeAttribute('aria-busy');
+    row.replaceChildren(UI.createState({
+      kind: 'error',
+      compact: true,
+      icon: 'alert',
+      title: 'Couldn’t display ' + ((section && section.label) || 'content'),
+      text: 'Something went wrong while displaying this section. Please retry.',
+      actionLabel: 'Retry',
+      actionIcon: 'refresh',
+      onAction: () => loadHomeSection(section, true)
+    }));
+    return null;
   }
-  const tabs = tabsContainer.querySelectorAll('.tab-btn');
-  function updateIndicator(activeTab) {
-    if (!discoverIndicator) return;
-    discoverIndicator.style.transform = `translateX(${activeTab.offsetLeft}px)`;
-    discoverIndicator.style.width = `${activeTab.offsetWidth}px`;
-  }
-  setTimeout(() => {
-    const active = tabsContainer.querySelector('.tab-btn.active');
-    if (active) updateIndicator(active);
-  }, 10);
-  tabs.forEach(tab => {
-    tab.removeEventListener('click', tabClickHandler);
-    tab.addEventListener('click', tabClickHandler);
+}
+
+let heroObserver = null;
+
+function renderHero(items) {
+  const hero = $('hero');
+  const track = $('heroTrack');
+  const dots = $('heroDots');
+  if (!hero || !track || !dots) return;
+
+  const slides = (items || []).filter((item) => item && item.id && item.backdrop_path).slice(0, 6);
+  if (!slides.length) { hero.hidden = true; document.body.classList.add('no-hero'); return; }
+  hero.hidden = false;
+  document.body.classList.remove('no-hero');
+
+  if (heroObserver) heroObserver.disconnect();
+  track.replaceChildren();
+  dots.replaceChildren();
+
+  const slideNodes = slides.map((item, index) => {
+    const node = window.createHeroSlide(item, {
+      type: 'movie',
+      eager: index === 0,
+      eyebrow: 'Trending this week',
+      label: (index + 1) + ' of ' + slides.length + ': ' + UI.titleOf(item)
+    });
+    track.appendChild(node);
+    return node;
   });
-  async function tabClickHandler(e) {
-    const tab = e.currentTarget;
-    if (tab.classList.contains('active')) return;
-    tabs.forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    updateIndicator(tab);
-    currentDiscoverType = tab.dataset.type;
-    await loadDiscoverData(currentDiscoverType, true);
+
+  const dotNodes = slides.map((item, index) => {
+    const dot = el('button', {
+      class: 'hero-dot' + (index === 0 ? ' active' : ''),
+      attrs: { type: 'button', 'aria-label': 'Show featured title ' + (index + 1) + ' of ' + slides.length },
+      on: { click: () => track.scrollTo({ left: track.clientWidth * index, behavior: UI.reducedMotion() ? 'auto' : 'smooth' }) }
+    });
+    if (index === 0) dot.setAttribute('aria-current', 'true');
+    dots.appendChild(dot);
+    return dot;
+  });
+
+  if ('IntersectionObserver' in window) {
+    heroObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const index = slideNodes.indexOf(entry.target);
+        dotNodes.forEach((dot, i) => {
+          dot.classList.toggle('active', i === index);
+          if (i === index) dot.setAttribute('aria-current', 'true');
+          else dot.removeAttribute('aria-current');
+        });
+      });
+    }, { root: track, threshold: 0.6 });
+    slideNodes.forEach((node) => heroObserver.observe(node));
   }
-  window.addEventListener('resize', () => {
-    const active = tabsContainer.querySelector('.tab-btn.active');
-    if (active) updateIndicator(active);
+}
+
+/** Desktop previous/next buttons for horizontal rows (hidden on touch via CSS). */
+function initRowControls() {
+  document.querySelectorAll('.row-controls[data-for]').forEach((controls) => {
+    const row = $(controls.dataset.for);
+    if (!row || controls.dataset.ready === '1') return;
+    controls.dataset.ready = '1';
+    const label = controls.dataset.label || 'row';
+
+    const make = (dir, name, text) => el('button', {
+      class: 'row-btn',
+      attrs: { type: 'button', 'aria-label': text + ' ' + label },
+      on: {
+        click: () => row.scrollBy({ left: dir * Math.max(240, row.clientWidth * 0.85), behavior: UI.reducedMotion() ? 'auto' : 'smooth' })
+      }
+    }, icon(name, 18));
+
+    const prev = make(-1, 'chevL', 'Scroll left:');
+    const next = make(1, 'chevR', 'Scroll right:');
+    controls.append(prev, next);
+
+    let queued = false;
+    const update = () => {
+      queued = false;
+      prev.disabled = row.scrollLeft <= 4;
+      next.disabled = row.scrollLeft + row.clientWidth >= row.scrollWidth - 4;
+    };
+    row.addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(update); } }, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+    window.enableDragScroll(row);
   });
 }
 
-async function loadDiscoverData(type, reset = true) {
-  if (discoverLoading) return;
-  if (reset) {
-    discoverPage = 1;
-    discoverHasMore = true;
-    currentDiscoverType = type;
-    const grid = document.getElementById('discoverGrid');
-    if (grid) grid.innerHTML = '';
-    const cacheKey = `discover_${type}_page1`;
-    const cached = getCachedData(cacheKey);
-    if (cached && cached.results && cached.results.length) {
-      renderDiscoverItems(cached.results, true);
-      discoverPage++;
-      discoverHasMore = true;
+async function initHome() {
+  try {
+    initRowControls();
+  } catch (error) {
+    console.warn('Home row controls could not be initialized:', error);
+  }
+
+  // Each section handles its own failure; one broken endpoint must not block the others.
+  const results = await Promise.all(HOME_SECTIONS.map((section) => loadHomeSection(section, false)));
+  const trending = results[0];
+  if (Array.isArray(trending) && trending.length) renderHero(trending);
+  else {
+    const hero = $('hero');
+    if (hero) hero.hidden = true;
+    document.body.classList.add('no-hero');
+  }
+}
+
+// =============================================================================
+// 8. WATCHLIST PAGE
+// =============================================================================
+const SORT_KEY = 'orvion:watchlist:sort';
+
+const watchlistState = {
+  entries: [],
+  status: 'plan',
+  category: 'all',
+  sort: 'added',
+  loaded: false,
+  failed: false,
+  render: () => {},
+  apply(docId, mutate) {
+    const entry = this.entries.find((e) => e.docId === docId);
+    if (entry) mutate(entry);
+    this.render();
+  },
+  remove(docId) {
+    this.entries = this.entries.filter((e) => e.docId !== docId);
+    this.render();
+  }
+};
+
+function readWatchlistHash() {
+  const [status, category] = decodeURIComponent(location.hash.replace(/^#/, '')).split('/');
+  if (STATUSES.some((s) => s.value === status)) watchlistState.status = status;
+  if (category && (category === 'all' || CATEGORIES.some((c) => c.value === category) || category === 'other')) watchlistState.category = category;
+}
+
+function writeWatchlistHash() {
+  const hash = '#' + watchlistState.status + (watchlistState.category !== 'all' ? '/' + watchlistState.category : '');
+  history.replaceState(null, '', location.pathname + location.search + hash);
+}
+
+function categoryKey(entry) {
+  return CATEGORIES.some((c) => c.value === entry.category) ? entry.category : 'other';
+}
+
+function sortEntries(list) {
+  const copy = list.slice();
+  if (watchlistState.sort === 'title') {
+    copy.sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' }));
+  } else {
+    copy.sort((a, b) => (Number(b.added) || 0) - (Number(a.added) || 0));
+  }
+  return copy;
+}
+
+/** "Added Mar 2025" from the stored timestamp; falls back to the category when a record has no `added` value. */
+function addedText(entry) {
+  const time = Number(entry.added);
+  if (!time) return categoryLabel(entry.category);
+  try {
+    return 'Added ' + new Date(time).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  } catch (e) {
+    return categoryLabel(entry.category);
+  }
+}
+
+function watchlistCard(entry) {
+  const type = entry.category === 'movie' ? 'movie' : 'tv';
+  return window.createWatchlistCard(entry, {
+    status: normalizeStatus(entry.status),
+    statusLabel: statusLabel(entry.status),
+    categoryLabel: categoryLabel(entry.category),
+    subText: addedText(entry),
+    onOpen: () => showItemDetails(entry.id, type),
+    onManage: showManageSheet
+  });
+}
+
+const EMPTY_COPY = {
+  plan: { title: 'Nothing planned yet', text: 'Save movies and shows you want to watch and they’ll wait for you here.' },
+  watching: { title: 'Nothing in progress', text: 'Titles you’re currently watching will show up here.' },
+  watched: { title: 'No finished titles yet', text: 'Mark something as watched to build your history.' },
+  dropped: { title: 'Nothing dropped', text: 'Titles you stopped watching will be kept here.' }
+};
+
+function initWatchlist() {
+  const content = $('watchlistContent');
+  const tabs = $('statusTabs');
+  const chips = $('categoryChips');
+  const sortSelect = $('sortSelect');
+  const summary = $('watchlistSummary');
+  if (!content || !tabs || !chips) return;
+
+  watchlistState.sort = readPref(SORT_KEY, 'added') === 'title' ? 'title' : 'added';
+  if (sortSelect) sortSelect.value = watchlistState.sort;
+  readWatchlistHash();
+
+  const segmented = UI.segmented(tabs, {
+    onChange: (value) => {
+      watchlistState.status = value;
+      watchlistState.category = 'all';
+      writeWatchlistHash();
+      render();
+    }
+  });
+  segmented.setValue(watchlistState.status, true);
+
+  function selectCategory(value) {
+    watchlistState.category = value;
+    writeWatchlistHash();
+    render();
+    window.scrollTo({ top: 0, behavior: UI.reducedMotion() ? 'auto' : 'smooth' });
+  }
+
+  function renderChips(inStatus) {
+    const counts = {};
+    inStatus.forEach((entry) => { const k = categoryKey(entry); counts[k] = (counts[k] || 0) + 1; });
+    const keys = CATEGORIES.map((c) => c.value).concat('other').filter((k) => counts[k]);
+    if (watchlistState.category !== 'all' && !counts[watchlistState.category]) watchlistState.category = 'all';
+
+    chips.replaceChildren();
+    if (keys.length < 2 && watchlistState.category === 'all') { chips.hidden = true; return; }
+    chips.hidden = false;
+
+    const make = (value, label, count) => {
+      const active = watchlistState.category === value;
+      const chip = el('button', {
+        class: 'chip' + (active ? ' active' : ''),
+        attrs: { type: 'button', 'aria-pressed': active ? 'true' : 'false' },
+        on: { click: () => { if (watchlistState.category !== value) selectCategory(value); } }
+      }, el('span', { text: label }), el('span', { class: 'chip-count', text: String(count) }));
+      chips.appendChild(chip);
+    };
+    make('all', 'All', inStatus.length);
+    keys.forEach((key) => make(key, key === 'other' ? 'Other' : categoryLabel(key), counts[key]));
+  }
+
+  function renderTabCounts() {
+    const counts = {};
+    watchlistState.entries.forEach((entry) => { const s = normalizeStatus(entry.status); counts[s] = (counts[s] || 0) + 1; });
+    tabs.querySelectorAll('[role="tab"]').forEach((tab) => {
+      const badge = tab.querySelector('.seg-count');
+      if (badge) badge.textContent = watchlistState.loaded && !watchlistState.failed ? String(counts[tab.dataset.value] || 0) : '';
+    });
+    segmented.refresh();
+  }
+
+  function renderSkeleton() {
+    const row = el('div', { class: 'row' });
+    row.appendChild(UI.skeletonCards(6));
+    content.replaceChildren(row);
+    content.setAttribute('aria-busy', 'true');
+  }
+
+  function render() {
+    content.removeAttribute('aria-busy');
+    renderTabCounts();
+
+    if (watchlistState.failed) {
+      chips.hidden = true;
+      content.replaceChildren(UI.createState({
+        kind: 'error',
+        icon: navigator.onLine === false ? 'wifiOff' : 'alert',
+        title: 'Couldn’t load your watchlist',
+        text: watchlistState.failureMessage || 'Please try again.',
+        actionLabel: 'Try again',
+        actionIcon: 'refresh',
+        onAction: () => fetchLibrary(true)
+      }));
+      if (summary) summary.textContent = '';
       return;
     }
-  }
-  discoverLoading = true;
-  const loader = document.getElementById('discoverLoader');
-  if (loader) loader.style.display = 'block';
-  try {
-    const response = type === 'movie' ? await window.fetchDiscoverMovies(discoverPage) : await window.fetchDiscoverTV(discoverPage);
-    const items = response.results || [];
-    if (items.length === 0) {
-      discoverHasMore = false;
-      if (reset) showDiscoverEmpty();
-    } else {
-      if (reset && discoverPage === 1) {
-        setCachedData(`discover_${type}_page1`, response);
-      }
-      renderDiscoverItems(items, reset);
-      discoverPage++;
-      discoverHasMore = true;
+
+    if (summary) {
+      const total = watchlistState.entries.length;
+      summary.textContent = total ? total + (total === 1 ? ' title saved' : ' titles saved') : '';
     }
-  } catch (err) {
-    console.error('Discover load error', err);
-    if (reset) showDiscoverEmpty();
-  } finally {
-    discoverLoading = false;
-    if (loader) loader.style.display = 'none';
-  }
-}
 
-function renderDiscoverItems(items, reset) {
-  const grid = document.getElementById('discoverGrid');
-  if (!grid) return;
-  if (reset) grid.innerHTML = '';
-  items.forEach(item => {
-    if (!item.title && item.name) item.title = item.name;
-    const card = window.createSmallCard(item, currentDiscoverType);
-    grid.appendChild(card);
-  });
-}
+    const inStatus = watchlistState.entries.filter((e) => normalizeStatus(e.status) === watchlistState.status);
+    renderChips(inStatus);
 
-function showDiscoverEmpty() {
-  const grid = document.getElementById('discoverGrid');
-  if (grid) {
-    grid.innerHTML = '<div class="empty-state">🎬<p>No content available</p><span>Try another category</span></div>';
-  }
-}
-
-// ---------- WATCHLIST RENDERING ----------
-function initWatchlistTabs() {
-  const tabsContainer = document.querySelector('.watchlist-tabs');
-  if (!tabsContainer) return;
-  const tabs = tabsContainer.querySelectorAll('.tab-btn');
-  const indicator = tabsContainer.querySelector('.tab-indicator');
-  function moveIndicator(active) {
-    if (!indicator) return;
-    indicator.style.width = active.offsetWidth + 'px';
-    indicator.style.transform = `translateX(${active.offsetLeft}px)`;
-  }
-  setTimeout(() => {
-    const active = tabsContainer.querySelector('.tab-btn.active');
-    if (active) moveIndicator(active);
-  }, 10);
-  tabs.forEach(tab => {
-    tab.removeEventListener('click', tabClickHandler);
-    tab.addEventListener('click', tabClickHandler);
-  });
-  async function tabClickHandler(e) {
-    const tab = e.currentTarget;
-    if (tab.classList.contains('active')) return;
-    tabs.forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    moveIndicator(tab);
-    currentStatus = tab.dataset.status;
-    await renderWatchlist();
-  }
-  window.addEventListener('resize', () => {
-    const active = tabsContainer.querySelector('.tab-btn.active');
-    if (active) moveIndicator(active);
-  });
-}
-
-async function renderWatchlist() {
-  const container = document.getElementById('watchlistContent');
-  if (!container) return;
-  container.innerHTML = '<div class="loading-spinner">Loading...</div>';
-  const categories = ['movie', 'series', 'anime', 'kdrama'];
-  const labels = { movie: 'Movies', series: 'Series', anime: 'Anime', kdrama: 'Kdrama' };
-  let hasAny = false;
-  const rows = [];
-  for (const cat of categories) {
-    const result = await getItemsByStatusAndCategory(currentStatus, cat);
-    if (!result.success || result.items.length === 0) continue;
-    hasAny = true;
-    const row = document.createElement('div');
-    row.className = 'category-row';
-    row.setAttribute('data-category', cat);
-    row.innerHTML = `<div class="category-title"><h3>${labels[cat]}</h3><span class="category-badge">${result.items.length}</span></div>`;
-    const scrollDiv = document.createElement('div');
-    scrollDiv.className = 'row-scroll';
-    result.items.forEach(item => {
-      const card = window.createWatchlistCard(
-        item,
-        async (docId) => {
-          const res = await removeFromWatchlist(docId);
-          if (res.success) {
-            await renderWatchlist();
-            showToast('Removed from watchlist', 'success');
-          } else {
-            showToast('Error removing item', 'error');
-          }
-        },
-        (docId, title, currentStatusVal) => {
-          showStatusUpdateModal(docId, title, currentStatusVal);
-        }
-      );
-      scrollDiv.appendChild(card);
-    });
-    row.appendChild(scrollDiv);
-    rows.push(row);
-  }
-  container.innerHTML = '';
-  rows.forEach(row => container.appendChild(row));
-  if (!hasAny) {
-    container.innerHTML = '<div class="empty-state">📺<p>Start building your watchlist</p><span>Add movies and series</span></div>';
-  }
-  document.querySelectorAll('.category-row').forEach(row => {
-    row.removeEventListener('click', categoryClickHandler);
-    row.addEventListener('click', categoryClickHandler);
-  });
-}
-
-function categoryClickHandler(e) {
-  if (e.target.closest('.card-sm')) return;
-  const category = e.currentTarget.getAttribute('data-category');
-  openExpandedView(category);
-}
-
-function setupWatchlistExpandedView() {
-  const backBtn = document.getElementById('expandedBackBtn');
-  if (backBtn) {
-    backBtn.removeEventListener('click', closeExpandedView);
-    backBtn.addEventListener('click', closeExpandedView);
-  }
-}
-
-async function openExpandedView(category) {
-  currentExpandedCategory = category;
-  const normalView = document.getElementById('watchlistNormalView');
-  const expandedView = document.getElementById('watchlistExpandedView');
-  const expandedTitle = document.getElementById('expandedTitle');
-  const expandedGrid = document.getElementById('expandedGrid');
-  const labels = { movie: 'Movies', series: 'Series', anime: 'Anime', kdrama: 'Kdrama' };
-  expandedTitle.textContent = labels[category] || 'Movies';
-  const result = await getItemsByStatusAndCategory(currentStatus, category);
-  const items = result.success ? result.items : [];
-  expandedGrid.innerHTML = '';
-  if (items.length === 0) {
-    expandedGrid.innerHTML = '<div class="empty-state">📭<p>No items in this category</p><span>Add some to your watchlist</span></div>';
-  } else {
-    items.forEach(item => {
-      const card = window.createWatchlistCard(
-        item,
-        async (docId) => {
-          const res = await removeFromWatchlist(docId);
-          if (res.success) {
-            await renderWatchlist();
-            if (currentExpandedCategory === category) openExpandedView(category);
-            showToast('Removed from watchlist', 'success');
-          } else {
-            showToast('Error removing item', 'error');
-          }
-        },
-        (docId, title, currentStatusVal) => {
-          showStatusUpdateModal(docId, title, currentStatusVal);
-        }
-      );
-      expandedGrid.appendChild(card);
-    });
-  }
-  normalView.style.display = 'none';
-  expandedView.style.display = 'block';
-  document.body.style.overflow = 'hidden';
-}
-
-function closeExpandedView() {
-  const normalView = document.getElementById('watchlistNormalView');
-  const expandedView = document.getElementById('watchlistExpandedView');
-  normalView.style.display = 'block';
-  expandedView.style.display = 'none';
-  document.body.style.overflow = '';
-  currentExpandedCategory = null;
-}
-
-// ---------- STATUS UPDATE MODAL ----------
-let currentUpdatingDocId = null;
-let currentUpdatingTitle = null;
-
-function showStatusUpdateModal(docId, title, currentStatusVal) {
-  currentUpdatingDocId = docId;
-  currentUpdatingTitle = title;
-  let modal = document.getElementById('statusUpdateModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'statusUpdateModal';
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content add-modal-content glass">
-        <div class="modal-header">
-          <h3>Change Status</h3>
-          <p class="modal-subtitle" id="statusUpdateTitle"></p>
-        </div>
-        <div class="modal-body">
-          <div class="input-group">
-            <label>New Status</label>
-            <div class="custom-dropdown" id="statusUpdateDropdown">
-              <div class="dropdown-selected">Plan to Watch</div>
-              <div class="dropdown-options">
-                <div class="dropdown-option" data-value="plan">Plan to Watch</div>
-                <div class="dropdown-option" data-value="watching">Watching</div>
-                <div class="dropdown-option" data-value="completed">Completed</div>
-                <div class="dropdown-option" data-value="dropped">Dropped</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn glass-btn" id="statusUpdateCancel">Cancel</button>
-          <button class="btn accent-btn" id="statusUpdateSave">Update</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    const dropdown = modal.querySelector('.custom-dropdown');
-    const selected = dropdown.querySelector('.dropdown-selected');
-    const options = dropdown.querySelectorAll('.dropdown-option');
-    selected.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      document.querySelectorAll('.custom-dropdown.open').forEach(d => {
-        if (d !== dropdown) d.classList.remove('open');
-      });
-      dropdown.classList.toggle('open');
-    });
-    options.forEach(opt => {
-      opt.addEventListener('pointerdown', (e) => {
-        e.stopPropagation();
-        dropdown.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
-        opt.classList.add('selected');
-        selected.textContent = opt.textContent;
-        dropdown.classList.remove('open');
-      });
-    });
-    document.addEventListener('pointerdown', (e) => {
-      if (!e.target.closest('.custom-dropdown')) {
-        document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
-      }
-    });
-    modal.querySelector('#statusUpdateCancel').addEventListener('click', () => {
-      modal.classList.remove('show');
-      document.body.classList.remove('modal-open');
-    });
-    modal.querySelector('#statusUpdateSave').addEventListener('click', async () => {
-      const newStatusOption = modal.querySelector('#statusUpdateDropdown .dropdown-option.selected');
-      const newStatus = newStatusOption ? newStatusOption.dataset.value : 'plan';
-      if (currentUpdatingDocId) {
-        const res = await updateWatchlistStatus(currentUpdatingDocId, newStatus);
-        if (res.success) {
-          let statusText = '';
-          switch(newStatus) {
-            case 'plan': statusText = 'Plan to Watch'; break;
-            case 'watching': statusText = 'Watching'; break;
-            case 'completed': statusText = 'Completed'; break;
-            case 'dropped': statusText = 'Dropped'; break;
-          }
-          showToast(`Status updated to ${statusText}`, 'success');
-          if (document.body.classList.contains('watchlist-page')) {
-            await renderWatchlist();
-          }
-        } else {
-          showToast('Failed to update status', 'error');
-        }
-      }
-      modal.classList.remove('show');
-      document.body.classList.remove('modal-open');
-      currentUpdatingDocId = null;
-    });
-  }
-  const titleSpan = modal.querySelector('#statusUpdateTitle');
-  titleSpan.textContent = `"${title}"`;
-  const currentStatusMap = {
-    'plan': 'Plan to Watch',
-    'watching': 'Watching',
-    'completed': 'Completed',
-    'dropped': 'Dropped'
-  };
-  const currentText = currentStatusMap[currentStatusVal] || 'Plan to Watch';
-  const dropdown = modal.querySelector('#statusUpdateDropdown');
-  const selectedDiv = dropdown.querySelector('.dropdown-selected');
-  selectedDiv.textContent = currentText;
-  const options = dropdown.querySelectorAll('.dropdown-option');
-  options.forEach(opt => {
-    if (opt.dataset.value === currentStatusVal) {
-      opt.classList.add('selected');
-    } else {
-      opt.classList.remove('selected');
+    if (!inStatus.length) {
+      const copy = EMPTY_COPY[watchlistState.status];
+      content.replaceChildren(UI.createState({
+        icon: 'bookmark',
+        title: copy.title,
+        text: copy.text,
+        secondaryHref: 'discover.html',
+        secondaryLabel: 'Discover titles'
+      }));
+      return;
     }
-  });
-  document.body.classList.add('modal-open');
-  modal.classList.add('show');
-}
 
-// ---------- DETAILS MODAL ----------
-async function showItemDetails(id, type) {
-  if (isOpeningModal) return;
-  isOpeningModal = true;
-  setTimeout(() => { isOpeningModal = false; }, 300);
-  if (!id || !type) {
-    console.error("Invalid item data", { id, type });
-    return;
+    if (watchlistState.category !== 'all') {
+      const filtered = sortEntries(inStatus.filter((e) => categoryKey(e) === watchlistState.category));
+      const grid = el('div', { class: 'grid' });
+      const cards = filtered.map(watchlistCard);
+      grid.append(...cards);
+      content.replaceChildren(grid);
+      UI.stagger(cards);
+      return;
+    }
+
+    const sections = [];
+    CATEGORIES.map((c) => c.value).concat('other').forEach((key) => {
+      const items = sortEntries(inStatus.filter((e) => categoryKey(e) === key));
+      if (!items.length) return;
+      const title = key === 'other' ? 'Other' : (CATEGORIES.find((c) => c.value === key) || {}).plural;
+      const row = el('div', { class: 'row' });
+      const cards = items.map(watchlistCard);
+      row.append(...cards);
+      UI.stagger(cards);
+      window.enableDragScroll(row);
+      sections.push(el('section', { class: 'section library-section' },
+        el('div', { class: 'section-head' },
+          el('h2', { class: 'section-title' }, title, el('span', { class: 'count-badge', text: String(items.length) })),
+          el('button', {
+            class: 'link-btn',
+            attrs: { type: 'button', 'aria-label': 'See all ' + title },
+            on: { click: () => selectCategory(key) }
+          }, 'See all', icon('chevR', 16))
+        ),
+        row
+      ));
+    });
+    content.replaceChildren(...sections);
   }
-  document.getElementById('detailsTitle').textContent = 'Loading...';
-  document.getElementById('detailsPoster').src = 'https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Poster';
-  document.getElementById('detailsOverview').textContent = 'Loading...';
-  document.getElementById('detailsGenres').innerHTML = '';
-  document.getElementById('detailsCast').innerHTML = '';
-  document.getElementById('detailsRuntime').textContent = '';
-  let item;
-  if (type === 'movie') {
-    item = await window.fetchMovieDetails(id);
-  } else if (type === 'tv') {
-    item = await window.fetchTVDetails(id);
-  } else {
-    console.error("Unknown type:", type);
-    isOpeningModal = false;
-    return;
+
+  watchlistState.render = render;
+
+  async function fetchLibrary(showSkeleton) {
+    if (showSkeleton) renderSkeleton();
+    const result = await loadLibrary();
+    if (result.success) {
+      watchlistState.entries = result.items;
+      watchlistState.loaded = true;
+      watchlistState.failed = false;
+    } else if (!watchlistState.loaded || showSkeleton) {
+      watchlistState.failed = true;
+      watchlistState.failureMessage = result.message;
+    }
+    render();
   }
-  if (!item) {
-    console.error("Failed to fetch details", id, type);
-    showToast('Failed to load details', 'error');
-    isOpeningModal = false;
-    return;
-  }
-  currentItem = item;
-  const title = item.title || item.name;
-  const releaseDate = item.release_date || item.first_air_date;
-  const year = releaseDate ? releaseDate.split('-')[0] : 'N/A';
-  const runtime = item.runtime || (item.episode_run_time ? item.episode_run_time[0] : null);
-  const poster = item.poster_path ? window.IMG_BASE + item.poster_path : 'https://dummyimage.com/300x450/1e1e1e/aaa?text=No+Poster';
-  const backdrop = item.backdrop_path ? `url(${window.IMG_BASE_ORIGINAL + item.backdrop_path})` : 'none';
-  document.getElementById('detailsBackdrop').style.backgroundImage = backdrop;
-  document.getElementById('detailsPoster').src = poster;
-  document.getElementById('detailsTitle').textContent = title;
-  document.getElementById('detailsYear').textContent = year;
-  document.getElementById('detailsRating').innerHTML = `⭐ ${item.vote_average ? item.vote_average.toFixed(1) : 'NR'}`;
-  document.getElementById('detailsRuntime').textContent = runtime ? runtime + ' min' : '';
-  const genresContainer = document.getElementById('detailsGenres');
-  genresContainer.innerHTML = '';
-  if (item.genres) {
-    item.genres.forEach(g => {
-      const span = document.createElement('span');
-      span.className = 'genre-tag';
-      span.textContent = g.name;
-      genresContainer.appendChild(span);
+
+  if (sortSelect) {
+    sortSelect.addEventListener('change', () => {
+      watchlistState.sort = sortSelect.value === 'title' ? 'title' : 'added';
+      writePref(SORT_KEY, watchlistState.sort);
+      render();
     });
   }
-  document.getElementById('detailsOverview').textContent = item.overview || 'No overview available.';
-  const castContainer = document.getElementById('detailsCast');
-  castContainer.innerHTML = '';
-  if (item.credits && item.credits.cast) {
-    item.credits.cast.slice(0, 6).forEach(actor => {
-      if (!actor.profile_path) return;
-      const div = document.createElement('div');
-      div.className = 'cast-item';
-      div.innerHTML = `<img src="${window.IMG_BASE + actor.profile_path}" alt="${actor.name}"><div class="name">${actor.name}</div>`;
-      castContainer.appendChild(div);
+
+  window.addEventListener('orvion:watchlist-changed', () => fetchLibrary(false));
+  window.addEventListener('pageshow', (event) => { if (event.persisted) fetchLibrary(false); });
+
+  fetchLibrary(true);
+}
+
+// =============================================================================
+// 9. PWA: SERVICE WORKER + INSTALL PROMPT
+// =============================================================================
+function initServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  const hadController = !!navigator.serviceWorker.controller;
+  let registration = null;
+  let reloading = false;
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then((reg) => { registration = reg; })
+      .catch((error) => console.warn('Service worker registration failed:', error));
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && registration) registration.update().catch(() => {});
+  });
+
+  // A new worker took control: offer a refresh instead of reloading under the user's feet.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return; // first install – nothing to refresh
+    UI.showToast('Orvion was updated.', 'info', {
+      actionLabel: 'Refresh',
+      duration: 15000,
+      onAction: () => { reloading = true; window.location.reload(); }
     });
-  }
-  const trailerBtn = document.getElementById('trailerBtn');
-  if (trailerBtn) {
-    const videos = item.videos && item.videos.results ? item.videos.results : [];
-    const trailer = videos.find(v => v.type === 'Trailer' && v.site === 'YouTube');
-    if (trailer && trailer.key) {
-      trailerBtn.href = `https://www.youtube.com/watch?v=${trailer.key}`;
-      trailerBtn.style.display = 'inline-flex';
-    } else {
-      trailerBtn.style.display = 'none';
-    }
-  }
-  document.body.classList.add('modal-open');
-  document.getElementById('detailsModal').classList.add('show');
-}
-
-function hideDetailsModal() {
-  document.body.classList.remove('modal-open');
-  document.getElementById('detailsModal').classList.remove('show');
-  currentItem = null;
-}
-
-// ---------- INFINITE SCROLL ----------
-let scrollHandlerActive = true;
-function handleScroll() {
-  if (!scrollHandlerActive) return;
-  if (scrollThrottleTimer) return;
-  scrollThrottleTimer = requestAnimationFrame(() => {
-    const bodyClass = document.body.classList;
-    if (bodyClass.contains('discover-page')) {
-      if (!discoverLoading && discoverHasMore) {
-        const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-        if (scrollTop + clientHeight >= scrollHeight - 200) {
-          loadDiscoverData(currentDiscoverType, false);
-        }
-      }
-    }
-    scrollThrottleTimer = null;
   });
 }
-window.addEventListener('scroll', handleScroll);
 
-// ---------- INSTALL PROMPT ----------
+let installEvent = null;
+
 function initInstallPrompt() {
-  const installBtn = document.getElementById('installAppBtn');
-  if (!installBtn) return;
-  installBtn.style.display = 'none';
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    installBtn.style.display = 'flex';
+  const button = $('installAppBtn');
+  if (!button) return;
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (standalone) { button.hidden = true; return; }
+
+  const offer = (event) => {
+    installEvent = event;
+    button.hidden = false;
+  };
+  if (window.__orvionInstallEvent) offer(window.__orvionInstallEvent); // captured early by the page bootstrap
+  window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); offer(event); });
+
+  button.addEventListener('click', async () => {
+    if (!installEvent) return;
+    const promptEvent = installEvent;
+    installEvent = null;
+    button.hidden = true;
+    promptEvent.prompt();
+    try { await promptEvent.userChoice; } catch (e) { /* dismissed */ }
+    window.__orvionInstallEvent = null;
   });
-  installBtn.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    installBtn.style.display = 'none';
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User ${outcome} the installation`);
-    deferredPrompt = null;
+
+  window.addEventListener('appinstalled', () => {
+    button.hidden = true;
+    installEvent = null;
+    UI.showToast('Orvion installed', 'success');
   });
 }
 
-// ---------- SINGLE INIT FUNCTION ----------
-async function initApp() {
+function initConnectivityToasts() {
+  window.addEventListener('offline', () => UI.showToast('You’re offline', 'info', { duration: 3200 }));
+  window.addEventListener('online', () => UI.showToast('Back online', 'success'));
+}
+
+// =============================================================================
+// 10. INIT
+// =============================================================================
+function initApp() {
   initTheme();
-  if (typeof initCustomDropdowns === 'function') initCustomDropdowns();
-  initModals();
+  initServiceWorker();
   initInstallPrompt();
+  initConnectivityToasts();
 
-  const bodyClass = document.body.classList;
-  if (bodyClass.contains('home-page')) {
-    showHomeSkeleton();
-    await loadHome();
-  } else if (bodyClass.contains('discover-page')) {
-    showDiscoverSkeleton();
-    initDiscoverTabs();
-    await loadDiscoverData('movie', true);
-  } else if (bodyClass.contains('watchlist-page')) {
-    showWatchlistSkeleton();
-    initWatchlistTabs();
-    await renderWatchlist();
-    setupWatchlistExpandedView();
-  } else if (bodyClass.contains('search-page')) {
-    if (typeof initSearch === 'function') initSearch();
-    if (typeof initSearchHistory === 'function') initSearchHistory();
-  }
-
-  const themeBtn = document.getElementById('themeToggleBtn');
-  if (themeBtn) themeBtn.removeEventListener('click', showThemeSettings);
+  const themeBtn = $('themeToggleBtn');
   if (themeBtn) themeBtn.addEventListener('click', showThemeSettings);
+
+  const page = document.body.classList;
+  if (page.contains('home-page')) initHome();
+  else if (page.contains('watchlist-page')) initWatchlist();
 }
 
-document.addEventListener('DOMContentLoaded', initApp);
-window.addEventListener('beforeunload', () => {
-  if (autoSlideInterval) clearInterval(autoSlideInterval);
-  scrollHandlerActive = false;
-  window.removeEventListener('scroll', handleScroll);
-});
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initApp);
+else initApp();
 
 window.showAddModal = showAddModal;
 window.showItemDetails = showItemDetails;
-window.showToast = showToast;
-window.renderWatchlist = renderWatchlist;
-window.currentStatus = currentStatus;
-window.currentAddItem = currentAddItem;
-window.currentItem = currentItem;

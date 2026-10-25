@@ -1,0 +1,56 @@
+ORVION — STATIC AND MOCKED-INTEGRATION QA REPORT
+
+PROJECT ROOT
+Orvion-main/
+
+PROJECT CONTENTS
+- index.html
+- discover.html
+- search.html
+- watchlist.html
+- offline.html
+- css/style.css
+- js/api.js
+- js/app.js
+- js/discover.js
+- js/ui.js
+- js/watchlist.js
+- icons/icon-192.png
+- icons/icon-512.png
+- manifest.json
+- service-worker.js
+- vercel.json
+- UPDATE-NOTES.txt
+- QA-REPORT.txt
+
+CHECKS PERFORMED
+PASS — JavaScript syntax check for all five application modules.
+PASS — JavaScript syntax check for service-worker.js.
+PASS — Inline JavaScript syntax checks for all HTML pages.
+PASS — HTML parsing for all five HTML documents.
+PASS — No duplicate HTML IDs detected within each page.
+PASS — Local script, stylesheet, image, manifest, and icon references resolve within the project.
+PASS — CSS stylesheet and nested rule/declaration parsing.
+PASS — manifest.json parses as valid JSON.
+PASS — vercel.json parses as valid JSON.
+PASS — Manifest icon paths exist; icon dimensions are 192x192 and 512x512.
+PASS — Service-worker precache file references exist.
+PASS — API global functions called by app, Discover, Search, and UI are exported by js/api.js.
+PASS — UI helper methods referenced by pages are exported by js/ui.js.
+PASS — Firebase collection name and existing core watchlist fields match the supplied original project.
+PASS — Mocked TMDB success responses for home lists, Discover lists, search, details, and genres.
+PASS — Mocked TMDB 401 classification and network failure handling.
+PASS — Stale genre cache fallback when the genre endpoint is unavailable.
+
+NOT VERIFIED IN THIS ENVIRONMENT
+- Live TMDB API key validity and actual TMDB responses.
+- Live browser rendering: browser navigation to local test servers is blocked by the execution environment's browser policy.
+- Live Firebase SDK CDN loading and Firestore reads/writes.
+- Actual user watchlist data in the live Firestore project.
+- Vercel deployment and production service-worker update behavior.
+
+IMPORTANT
+A passing syntax/static check does not prove that every live API call or browser interaction works with the user's network, API key, browser extensions, Firebase rules, or deployed environment. The app now reports API failures with visible retry/error states rather than treating every failure as an empty successful response, but live testing is still required before production deployment.
+
+DATA SAFETY
+This package does not include a Firestore migration, collection deletion, mass update, or local data reset. The Firestore collection and watchlist module/schema were retained. The live Firestore security rules are outside this ZIP and therefore could not be inspected.

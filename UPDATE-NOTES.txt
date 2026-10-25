@@ -1,0 +1,46 @@
+ORVION — COMPLETE REDESIGN BUG-FIX PACKAGE
+
+This package contains the complete Orvion project, not only changed files.
+The original redesigned project structure is preserved.
+
+FILES UPDATED IN THIS PASS
+- js/api.js
+  * Keeps clear success-vs-failure response states for TMDB collection requests.
+  * Validates TMDB list response shapes and classifies common API/network failures.
+  * Reuses previously cached genre data if a refresh fails, so Discover filters remain available offline or during a temporary TMDB issue.
+- js/app.js
+  * Home sections load independently; a failure in one section does not block other sections.
+  * Each section removes its skeleton after success or failure, provides a retry action, and can fall back to previously cached results.
+  * Hero rendering has an IntersectionObserver fallback.
+- js/discover.js
+  * Discover is initialized by one page-specific module.
+  * Handles missing API functions, rejected requests, aborted/stale requests, and failed first-page / later-page loads.
+  * Restores URL-selected movie/TV, genre, and sort state.
+  * Shows a visible retry state instead of leaving a skeleton permanently visible.
+- search.html
+  * Search loading now has guarded error handling and guaranteed loading-state cleanup for unexpected failures.
+  * Displays the classified TMDB/network error when available and provides retry behavior.
+- service-worker.js
+  * Cache version updated to v13 so the updated application assets can replace older cached assets.
+
+PRESERVED
+- Original app structure and page names.
+- Existing Firebase project configuration and Firestore collection name: "watchlist".
+- Existing watchlist module and data schema fields: id, title, poster, category, status, added.
+- TMDB API integration and existing application pages.
+- Existing PWA manifest, icons, offline page, and Vercel configuration.
+
+NO DATABASE MIGRATION OR DESTRUCTIVE DATABASE OPERATION WAS ADDED.
+
+HOW TO USE
+1. Extract the ZIP.
+2. Open the extracted Orvion-main folder in VS Code (File > Open Folder).
+3. Run index.html through VS Code Live Server or another local HTTP server. Do not open the HTML with file://.
+4. Test Home, Discover, Search, details, and Watchlist before deployment.
+5. For updating an existing Git repository, copy the extracted project contents into the repository while preserving the repository's hidden .git folder.
+6. Commit and push only after local testing.
+
+IMPORTANT LIMITATIONS
+- The live TMDB endpoint could not be reached from the audit environment, so the current API key's live validity is not certified.
+- The live Firebase security rules are not present in this ZIP and were not changed or verified.
+- Browser rendering and live Firestore operations could not be exercised in the audit environment. See QA-REPORT.txt.

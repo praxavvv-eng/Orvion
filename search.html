@@ -1,406 +1,561 @@
-<!-- search.html – Full updated with long press support via createSmallCard -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-color="purple">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Orvion · search</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Orvion · Search</title>
+  <meta name="description" content="Search movies and TV shows.">
+
+  <!-- Apply the saved theme before first paint and catch the install prompt early (handled in js/app.js) -->
+  <script>
+    (function () {
+      try {
+        var root = document.documentElement;
+        var mode = localStorage.getItem('orvion-theme') || 'dark';
+        var color = localStorage.getItem('orvion-color') || 'purple';
+        if (mode === 'system') mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        root.setAttribute('data-theme', mode === 'light' ? 'light' : 'dark');
+        root.setAttribute('data-color', color);
+      } catch (e) {}
+      window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__orvionInstallEvent = e; });
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://image.tmdb.org">
+  <link rel="preconnect" href="https://api.themoviedb.org" crossorigin>
   <link rel="stylesheet" href="css/style.css">
-  <!-- PWA Meta -->
+
+  <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#7c3aed">
+  <meta name="theme-color" content="#0b0b0f">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Orvion">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/png" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body class="search-page">
-  <main>
-    <div class="search-header">
-      <div class="search-container glass">
-        <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" class="search-bar" id="searchInput" placeholder="Search movies & TV...">
-      </div>
-      <div class="search-history" id="searchHistory"></div>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Orvion home">
+      <img class="brand-mark" src="icons/icon-192.png" width="30" height="30" alt="">
+      <span>Orvion</span>
+    </a>
+    <div class="topbar-actions">
+      <button id="installAppBtn" class="pill-btn" type="button" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 11L12 15.5 16.5 11M5 19.5h14"/></svg>
+        <span>Install</span>
+      </button>
+      <button id="themeToggleBtn" class="icon-btn" type="button" aria-label="Appearance settings" aria-haspopup="dialog">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7h8M18 7h2M4 17h2M12 17h8"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
+      </button>
     </div>
-    <div class="search-grid" id="searchResults"></div>
-    <div id="searchLoader" class="loading-spinner" style="display: none;">Loading more...</div>
+  </header>
+
+  <main id="main">
+    <div class="page-head">
+      <h1 class="page-title">Search</h1>
+    </div>
+
+    <form class="search-wrap" id="searchForm" role="search" autocomplete="off">
+      <div class="search-field glass">
+        <svg class="icon-search" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+        <label class="sr-only" for="searchInput">Search movies and TV shows</label>
+        <input class="search-input" id="searchInput" name="q" type="search" placeholder="Movies, shows, anything…" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button type="button" class="icon-btn search-clear" id="searchClear" aria-label="Clear search" hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+    </form>
+
+    <div class="filters" id="searchFilters" hidden>
+      <div class="chips" id="typeChips" role="group" aria-label="Filter results by type"></div>
+    </div>
+
+    <div class="summary-bar" aria-live="polite">
+      <span id="searchStatus"></span>
+    </div>
+
+    <section class="recent" id="recentSearches" aria-label="Recent searches" hidden></section>
+
+    <div class="grid" id="searchResults" aria-live="polite"></div>
+    <div class="page-footer" id="searchFooter" hidden></div>
+    <div class="sentinel" id="searchSentinel"></div>
   </main>
 
-  <nav class="bottom-nav">
-    <a href="index.html" class="nav-item">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10l9-7 9 7v11h-6v-7h-6v7H3z"/></svg>
+  <nav class="dock" aria-label="Primary">
+    <a class="dock-item" href="index.html">
+      <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4.5 10.5L12 4.5l7.5 6V19a1 1 0 0 1-1 1H14v-5.5h-4V20H5.5a1 1 0 0 1-1-1z"/></svg>
       <span>Home</span>
     </a>
-    <a href="discover.html" class="nav-item">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <a class="dock-item" href="discover.html">
+      <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg>
       <span>Discover</span>
     </a>
-    <a href="search.html" class="nav-item active">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <a class="dock-item" href="search.html" aria-current="page">
+      <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
       <span>Search</span>
     </a>
-    <a href="watchlist.html" class="nav-item">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    <a class="dock-item" href="watchlist.html">
+      <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 4.5h10a1 1 0 0 1 1 1V20l-6-4-6 4V5.5a1 1 0 0 1 1-1z"/></svg>
       <span>Watchlist</span>
     </a>
   </nav>
 
-  <button id="installAppBtn" class="install-btn" style="display: none;">📱 Install App</button>
-
-  <!-- Modals (same as before) -->
-  <div class="modal" id="addModal">
-    <div class="modal-content add-modal-content glass">
-      <div class="modal-header">
-        <h3>Add to watchlist</h3>
-        <p class="modal-subtitle">Choose category and status</p>
-      </div>
-      <div class="modal-body">
-        <div class="input-group">
-          <label>Category</label>
-          <div class="custom-dropdown" id="categoryDropdown">
-            <div class="dropdown-selected">Movie</div>
-            <div class="dropdown-options">
-              <div class="dropdown-option" data-value="movie">Movie</div>
-              <div class="dropdown-option" data-value="series">Series</div>
-              <div class="dropdown-option" data-value="anime">Anime</div>
-              <div class="dropdown-option" data-value="kdrama">Kdrama</div>
-            </div>
-          </div>
-        </div>
-        <div class="input-group">
-          <label>Status</label>
-          <div class="custom-dropdown" id="statusDropdown">
-            <div class="dropdown-selected">Plan to Watch</div>
-            <div class="dropdown-options">
-              <div class="dropdown-option" data-value="plan">Plan to Watch</div>
-              <div class="dropdown-option" data-value="watching">Watching</div>
-              <div class="dropdown-option" data-value="watched">Watched</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn glass-btn" id="modalCancel">Cancel</button>
-        <button class="btn accent-btn" id="modalSave">Save</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" id="detailsModal">
-    <div class="modal-content details-modal glass">
-      <button class="close-btn" id="closeDetails">&times;</button>
-      <div class="details-backdrop" id="detailsBackdrop"></div>
-      <div class="details-content">
-        <div class="details-poster">
-          <img id="detailsPoster" src="" alt="">
-        </div>
-        <div class="details-info">
-          <h2 id="detailsTitle"></h2>
-          <div class="details-meta">
-            <span id="detailsYear"></span>
-            <span class="rating" id="detailsRating">⭐ 0.0</span>
-            <span id="detailsRuntime"></span>
-          </div>
-          <div class="details-genres" id="detailsGenres"></div>
-          <div class="details-description" id="detailsOverview"></div>
-          <div class="details-cast" id="detailsCast"></div>
-          <div class="details-actions">
-            <button class="btn details-add-btn accent-btn" id="detailsAddBtn">Add to watchlist</button>
-            <a href="#" class="btn trailer-btn glass-btn" id="trailerBtn" target="_blank">▶ Watch Trailer</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <script src="js/api.js"></script>
   <script src="js/ui.js"></script>
-
-  <!-- Firebase (modular) -->
-  <script type="importmap">
-    {
-      "imports": {
-        "firebase/app": "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js"
-      }
-    }
-  </script>
-  <script type="module">
-    import { initializeApp } from "firebase/app";
-    import { getFirestore } from "firebase/firestore";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyBjYQqk2a6eeiONwEqDxY3Mk5E7mrLnix0",
-      authDomain: "orvion-a2cb2.firebaseapp.com",
-      projectId: "orvion-a2cb2",
-      storageBucket: "orvion-a2cb2.firebasestorage.app",
-      messagingSenderId: "125083462622",
-      appId: "1:125083462622:web:d6d61bc9753f036887cb4f",
-      measurementId: "G-YTC7RGMVQX"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    window.db = db;
-  </script>
-
-  <script type="module" src="js/watchlist.js"></script>
   <script type="module" src="js/app.js"></script>
 
-  <!-- Search logic (fixed with long press support via createSmallCard) -->
+  <!-- Search page logic -->
   <script>
-    // ==================== SEARCH STATE ====================
-    let searchTimeout;
-    let currentQuery = '';
-    let currentPage = 1;
-    let isLoading = false;
-    let hasMore = true;
-    let totalPages = 1;
-    let seenIds = new Set();
+    (function () {
+      'use strict';
 
-    const input = document.getElementById('searchInput');
-    const resultsGrid = document.getElementById('searchResults');
-    const historyContainer = document.getElementById('searchHistory');
-    const loader = document.getElementById('searchLoader');
+      const UI = window.OrvionUI;
+      const { el, icon } = UI;
+      const $ = (id) => document.getElementById(id);
 
-    // Helper: show skeleton loader
-    function showSkeletonLoader() {
-      resultsGrid.innerHTML = '';
-      for (let i = 0; i < 12; i++) {
-        const skeleton = document.createElement('div');
-        skeleton.className = 'card-skeleton';
-        resultsGrid.appendChild(skeleton);
+      const MIN_CHARS = 2;
+      const DEBOUNCE_MS = 350;
+      const HISTORY_KEY = 'searchHistory';   // same key as before, so existing history is kept
+      const MAX_HISTORY = 10;
+      const MAX_EMPTY_RETRIES = 3;
+
+      const input = $('searchInput');
+      const form = $('searchForm');
+      const clearBtn = $('searchClear');
+      const grid = $('searchResults');
+      const footer = $('searchFooter');
+      const sentinel = $('searchSentinel');
+      const status = $('searchStatus');
+      const filtersRow = $('searchFilters');
+      const typeChips = $('typeChips');
+      const recent = $('recentSearches');
+      if (!input || !form || !grid) return;
+
+      const state = {
+        query: '',
+        page: 1,
+        totalPages: 1,
+        loading: false,
+        done: true,
+        idle: true,
+        token: 0,
+        abort: null,
+        items: [],
+        seen: new Set(),
+        filter: 'all',
+        partial: false,
+        debounce: null
+      };
+      const pageCache = new Map(); // "query|page" -> { movies, tv } so repeats cost no requests
+
+      // ------------------------------------------------------------------ history
+      function getHistory() {
+        try {
+          const value = JSON.parse(localStorage.getItem(HISTORY_KEY));
+          return Array.isArray(value) ? value.filter((x) => typeof x === 'string' && x.trim()) : [];
+        } catch (e) { return []; }
       }
-    }
+      function saveHistory(list) {
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ }
+      }
+      function addToHistory(query) {
+        const q = query.trim();
+        if (q.length < MIN_CHARS) return;
+        const next = getHistory().filter((item) => item.toLowerCase() !== q.toLowerCase());
+        next.unshift(q);
+        saveHistory(next.slice(0, MAX_HISTORY));
+        renderRecent();
+      }
+      function removeFromHistory(query) {
+        saveHistory(getHistory().filter((item) => item !== query));
+        renderRecent();
+      }
+      function clearHistory() {
+        try { localStorage.removeItem(HISTORY_KEY); } catch (e) { /* ignore */ }
+        renderRecent();
+        renderIdlePrompt();
+      }
 
-    function showNoResults() {
-      resultsGrid.innerHTML = '<p class="empty-message">No results found</p>';
-    }
+      function renderRecent() {
+        const history = getHistory();
+        recent.replaceChildren();
+        if (!state.idle || !history.length) { recent.hidden = true; return; }
+        recent.hidden = false;
 
-    function showToast(msg) {
-      const toast = document.getElementById('toast');
-      if (!toast) return;
-      toast.textContent = msg;
-      toast.classList.add('show');
-      setTimeout(() => toast.classList.remove('show'), 3000);
-    }
+        recent.appendChild(el('div', { class: 'recent-head' },
+          el('span', { text: 'Recent searches' }),
+          el('button', { class: 'link-btn', text: 'Clear all', attrs: { type: 'button' }, on: { click: clearHistory } })
+        ));
+        const list = el('ul');
+        history.forEach((query) => {
+          list.appendChild(el('li', { class: 'recent-item' },
+            el('button', {
+              class: 'recent-query',
+              attrs: { type: 'button' },
+              on: { click: () => { input.value = query; clearBtn.hidden = false; addToHistory(query); startSearch(query); } }
+            }, icon('search', 18), el('span', { text: query })),
+            el('button', {
+              class: 'recent-delete',
+              attrs: { type: 'button', 'aria-label': 'Remove “' + query + '” from recent searches' },
+              on: { click: () => removeFromHistory(query) }
+            }, icon('close', 18))
+          ));
+        });
+        recent.appendChild(list);
+      }
 
-    // Ranking: exact > startsWith > includes > popularity
-    function rankResults(items, query) {
-      const q = query.toLowerCase();
-      return items.sort((a, b) => {
-        const aTitle = (a.title || a.name || '').toLowerCase();
-        const bTitle = (b.title || b.name || '').toLowerCase();
-        if (aTitle === q && bTitle !== q) return -1;
-        if (bTitle === q && aTitle !== q) return 1;
-        if (aTitle.startsWith(q) && !bTitle.startsWith(q)) return -1;
-        if (bTitle.startsWith(q) && !aTitle.startsWith(q)) return 1;
-        return (b.popularity || 0) - (a.popularity || 0);
-      });
-    }
+      // -------------------------------------------------------------------- state views
+      function renderIdlePrompt() {
+        if (!state.idle || getHistory().length) { if (state.idle) grid.replaceChildren(); grid.classList.remove('has-state'); return; }
+        grid.classList.add('has-state');
+        grid.replaceChildren(UI.createState({
+          icon: 'search',
+          title: 'Find something to watch',
+          text: 'Search movies and TV shows by title.'
+        }));
+      }
 
-    // Render cards using window.createSmallCard (which includes long press)
-    function renderResults(items, append = false) {
-      if (!append) resultsGrid.innerHTML = '';
-      items.forEach(item => {
-        // Use the global createSmallCard from ui.js – this gives long press support
-        const card = window.createSmallCard(item, item.media_type);
-        resultsGrid.appendChild(card);
-      });
-    }
-
-    // Core search using movie + TV endpoints
-    async function performSearch(query, page, replace) {
-      if (isLoading) return;
-      isLoading = true;
-      if (loader) loader.style.display = 'block';
-      try {
-        // Use window.searchMovies and window.searchTV (now defined in api.js)
-        const [movieData, tvData] = await Promise.all([
-          window.searchMovies(query, page),
-          window.searchTV(query, page)
-        ]);
-        console.log(`[Search] ${query} page ${page}: movies=${movieData.results?.length || 0}, tv=${tvData.results?.length || 0}`);
-
-        let combined = [
-          ...(movieData.results || []).map(m => ({ ...m, media_type: 'movie' })),
-          ...(tvData.results || []).map(t => ({ ...t, media_type: 'tv' }))
-        ];
-
-        // Remove duplicates (id + media_type)
-        const uniqueMap = new Map();
-        for (const item of combined) {
-          const key = `${item.id}_${item.media_type}`;
-          if (!uniqueMap.has(key)) uniqueMap.set(key, item);
+      function setFooter(mode, retry) {
+        footer.replaceChildren();
+        footer.hidden = mode === 'none';
+        if (mode === 'loading') {
+          footer.appendChild(el('div', { class: 'loader', attrs: { role: 'status', 'aria-label': 'Loading more results' } }));
+        } else if (mode === 'end') {
+          footer.appendChild(el('p', { class: 'footer-note', text: 'That’s everything for this search' }));
+        } else if (mode === 'error') {
+          footer.appendChild(UI.createState({
+            kind: 'error', compact: true, icon: 'alert', title: 'Couldn’t load more',
+            actionLabel: 'Try again', actionIcon: 'refresh', onAction: retry
+          }));
         }
-        combined = Array.from(uniqueMap.values());
+      }
 
-        const totalPagesMovie = movieData.total_pages || 1;
-        const totalPagesTV = tvData.total_pages || 1;
-        totalPages = Math.max(totalPagesMovie, totalPagesTV);
+      function syncUrl(query) {
+        try {
+          history.replaceState(null, '', query ? location.pathname + '?q=' + encodeURIComponent(query) : location.pathname);
+        } catch (e) { /* ignore */ }
+      }
 
-        if (replace) {
-          const ranked = rankResults(combined, query);
-          seenIds.clear();
-          ranked.forEach(item => seenIds.add(`${item.id}_${item.media_type}`));
-          renderResults(ranked);
-          currentPage = page;
-          hasMore = currentPage < totalPages;
-        } else {
-          const newItems = combined.filter(item => !seenIds.has(`${item.id}_${item.media_type}`));
-          if (newItems.length === 0) {
-            hasMore = false;
+      function toIdle(message) {
+        clearTimeout(state.debounce);
+        if (state.abort) state.abort.abort();
+        state.token += 1;
+        Object.assign(state, { query: '', page: 1, totalPages: 1, loading: false, done: true, idle: true, items: [], filter: 'all', partial: false });
+        state.seen.clear();
+        grid.removeAttribute('aria-busy');
+        filtersRow.hidden = true;
+        status.textContent = message || '';
+        setFooter('none');
+        syncUrl('');
+        renderRecent();
+        renderIdlePrompt();
+      }
+
+      function passesFilter(item) {
+        return state.filter === 'all' || item.media_type === state.filter;
+      }
+
+      function renderChips() {
+        const counts = { all: state.items.length, movie: 0, tv: 0 };
+        state.items.forEach((item) => { counts[item.media_type] += 1; });
+        typeChips.replaceChildren();
+        [['all', 'All'], ['movie', 'Movies'], ['tv', 'TV']].forEach(([value, label]) => {
+          const active = state.filter === value;
+          typeChips.appendChild(el('button', {
+            class: 'chip' + (active ? ' active' : ''),
+            attrs: { type: 'button', 'aria-pressed': active ? 'true' : 'false' },
+            on: { click: () => { if (state.filter !== value) { state.filter = value; renderChips(); renderGrid(); } } }
+          }, el('span', { text: label }), el('span', { class: 'chip-count', text: String(counts[value]) })));
+        });
+        filtersRow.hidden = !state.items.length;
+      }
+
+      function updateStatus() {
+        const total = state.items.length;
+        if (!total) { status.textContent = ''; return; }
+        let text = total + (state.done ? '' : '+') + (total === 1 && state.done ? ' result' : ' results') + ' for “' + state.query + '”';
+        if (state.partial) text += ' (some results unavailable)';
+        status.textContent = text;
+      }
+
+      function showNoResults() {
+        grid.removeAttribute('aria-busy');
+        grid.classList.add('has-state');
+        grid.replaceChildren(UI.createState({
+          icon: 'search',
+          title: 'No results for “' + state.query + '”',
+          text: 'Check the spelling or try a different title.'
+        }));
+        filtersRow.hidden = true;
+        status.textContent = '';
+      }
+
+      function showFilterEmpty() {
+        grid.classList.add('has-state');
+        grid.replaceChildren(UI.createState({
+          compact: true,
+          icon: 'film',
+          title: state.filter === 'tv' ? 'No TV shows in these results' : 'No movies in these results',
+          actionLabel: 'Show all results',
+          onAction: () => { state.filter = 'all'; renderChips(); renderGrid(); }
+        }));
+      }
+
+      function appendCards(items) {
+        const cards = items.filter(passesFilter).map((item) => window.createSmallCard(item, item.media_type));
+        if (cards.length) {
+          if (grid.classList.contains('has-state')) { grid.classList.remove('has-state'); grid.replaceChildren(); }
+          grid.append(...cards);
+          UI.stagger(cards);
+        }
+      }
+
+      function renderGrid() {
+        grid.classList.remove('has-state');
+        grid.replaceChildren();
+        appendCards(state.items);
+        if (!grid.children.length && state.done) showFilterEmpty();
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        requestAnimationFrame(checkSentinel);
+      }
+
+      // -------------------------------------------------------------------- searching
+      function relevance(item, q) {
+        const title = String(item.title || item.name || '').toLowerCase();
+        if (title === q) return 3;
+        if (title.startsWith(q)) return 2;
+        if (title.includes(q)) return 1;
+        return 0;
+      }
+
+      function rank(items, query) {
+        const q = query.toLowerCase();
+        return items.slice().sort((a, b) => (relevance(b, q) - relevance(a, q)) || ((b.popularity || 0) - (a.popularity || 0)));
+      }
+
+      async function fetchPage(query, page) {
+        const key = query.toLowerCase() + '|' + page;
+        if (pageCache.has(key)) return pageCache.get(key);
+
+        state.abort = new AbortController();
+        const options = { signal: state.abort.signal };
+        const [movies, tv] = await Promise.all([window.searchMovies(query, page, options), window.searchTV(query, page, options)]);
+        const result = {
+          movies,
+          tv,
+          ok: movies.ok || tv.ok,
+          partial: movies.ok !== tv.ok,
+          error: !movies.ok ? movies.error : (!tv.ok ? tv.error : null)
+        };
+        if (movies.ok && tv.ok) {
+          if (pageCache.size >= 24) pageCache.delete(pageCache.keys().next().value);
+          pageCache.set(key, result);
+        }
+        return result;
+      }
+
+      function startSearch(query) {
+        clearTimeout(state.debounce);
+        if (state.abort) state.abort.abort();
+        state.token += 1;
+        Object.assign(state, { query, page: 1, totalPages: 1, loading: false, done: false, idle: false, items: [], filter: 'all', partial: false });
+        state.seen.clear();
+
+        recent.hidden = true;
+        filtersRow.hidden = true;
+        status.textContent = 'Searching…';
+        grid.classList.remove('has-state');
+        grid.replaceChildren(UI.skeletonCards(12));
+        grid.setAttribute('aria-busy', 'true');
+        setFooter('none');
+        syncUrl(query);
+        loadMore(0);
+      }
+
+      function searchErrorText(error) {
+        if (typeof window.describeTMDBError === 'function') return window.describeTMDBError(error);
+        if (navigator.onLine === false) return 'You’re offline. Reconnect and try again.';
+        return 'The movie database did not respond. Please try again.';
+      }
+
+      async function loadMore(attempt) {
+        if (state.loading || state.done || !state.query) return;
+        state.loading = true;
+        const token = state.token;
+        const query = state.query;
+        const page = state.page;
+        const first = page === 1;
+        if (!first) setFooter('loading');
+
+        try {
+          const result = await fetchPage(query, page);
+          if (token !== state.token) return; // a newer search replaced this one
+
+          if (!result || !result.ok) {
+            const message = searchErrorText(result && result.error);
+            if (first) {
+              grid.removeAttribute('aria-busy');
+              grid.classList.add('has-state');
+              grid.replaceChildren(UI.createState({
+                kind: 'error',
+                icon: navigator.onLine === false ? 'wifiOff' : 'alert',
+                title: 'Search isn’t working right now',
+                text: message,
+                actionLabel: 'Try again',
+                actionIcon: 'refresh',
+                onAction: () => startSearch(query)
+              }));
+              status.textContent = '';
+              filtersRow.hidden = true;
+              setFooter('none');
+            } else {
+              setFooter('error', () => loadMore(0));
+            }
+            return;
+          }
+
+          state.partial = state.partial || result.partial;
+          state.totalPages = Math.max(result.movies.total_pages || 1, result.tv.total_pages || 1);
+
+          let combined = [
+            ...result.movies.results.map((item) => Object.assign({}, item, { media_type: 'movie' })),
+            ...result.tv.results.map((item) => Object.assign({}, item, { media_type: 'tv' }))
+          ];
+          if (first) combined = rank(combined, query);
+
+          const fresh = combined.filter((item) => {
+            const key = item.media_type + '_' + item.id;
+            if (!item.id || state.seen.has(key)) return false;
+            state.seen.add(key);
+            return true;
+          });
+          state.items.push(...fresh);
+          state.page += 1;
+          state.done = state.page > state.totalPages;
+
+          if (first) {
+            grid.removeAttribute('aria-busy');
+            grid.classList.remove('has-state');
+            grid.replaceChildren();
+            if (!state.items.length) {
+              showNoResults();
+              return;
+            }
+          }
+
+          renderChips();
+          appendCards(fresh);
+          updateStatus();
+          setFooter(state.done ? 'end' : 'none');
+          if (state.done && !grid.querySelector('.card')) showFilterEmpty();
+
+          if (!fresh.length && !state.done && attempt < MAX_EMPTY_RETRIES) {
+            // Release the loading guard before requesting the next page.
+            state.loading = false;
+            await loadMore(attempt + 1);
+            return;
+          }
+          requestAnimationFrame(checkSentinel);
+        } catch (error) {
+          if (token !== state.token || (error && error.name === 'AbortError') || (state.abort && state.abort.signal.aborted)) return;
+          console.error('Search request/render failed:', error);
+          const message = searchErrorText(error);
+          if (first) {
+            grid.removeAttribute('aria-busy');
+            grid.classList.add('has-state');
+            grid.replaceChildren(UI.createState({
+              kind: 'error',
+              icon: navigator.onLine === false ? 'wifiOff' : 'alert',
+              title: 'Search isn’t working right now',
+              text: message,
+              actionLabel: 'Try again',
+              actionIcon: 'refresh',
+              onAction: () => startSearch(query)
+            }));
+            filtersRow.hidden = true;
+            status.textContent = '';
+            setFooter('none');
           } else {
-            newItems.forEach(item => seenIds.add(`${item.id}_${item.media_type}`));
-            renderResults(newItems, true);
-            currentPage = page;
-            hasMore = page < totalPages;
+            setFooter('error', () => loadMore(0));
+          }
+        } finally {
+          if (token === state.token) {
+            state.loading = false;
+            if (first) grid.removeAttribute('aria-busy');
           }
         }
-      } catch (err) {
-        console.error('Search error', err);
-        if (replace) showNoResults();
-      } finally {
-        isLoading = false;
-        if (loader) loader.style.display = 'none';
       }
-    }
 
-    // Debounced input handler
-    let debounceTimeout;
-    input.addEventListener('input', (e) => {
-      clearTimeout(debounceTimeout);
-      const query = e.target.value.trim();
-      currentQuery = query;
-      if (query.length < 2) {
-        resultsGrid.innerHTML = '';
-        seenIds.clear();
-        return;
+      function checkSentinel() {
+        if (state.loading || state.done || !state.query) return;
+        if (sentinel.getBoundingClientRect().top < window.innerHeight + 700) loadMore(0);
       }
-      showSkeletonLoader();
-      debounceTimeout = setTimeout(() => performSearch(query, 1, true), 300);
-    });
 
-    // Infinite scroll
-    window.addEventListener('scroll', () => {
-      if (!currentQuery || isLoading || !hasMore) return;
-      const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-      if (scrollTop + clientHeight >= scrollHeight - 200) {
-        performSearch(currentQuery, currentPage + 1, false);
-      }
-    });
-
-    // ==================== SEARCH HISTORY ====================
-    const HISTORY_KEY = 'searchHistory';
-    const MAX_HISTORY = 10;
-
-    function getHistory() {
-      try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; }
-    }
-    function addToHistory(q) {
-      if (!q.trim()) return;
-      let history = getHistory();
-      history = history.filter(item => item !== q);
-      history.unshift(q);
-      if (history.length > MAX_HISTORY) history.pop();
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-      renderHistory();
-    }
-    function removeFromHistory(q) {
-      let history = getHistory();
-      history = history.filter(item => item !== q);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-      renderHistory();
-    }
-    function clearHistory() {
-      localStorage.removeItem(HISTORY_KEY);
-      renderHistory();
-    }
-    function renderHistory() {
-      const history = getHistory();
-      if (history.length === 0) {
-        historyContainer.classList.remove('show');
-        return;
-      }
-      historyContainer.classList.add('show');
-      let html = '<div class="history-header"><span>Recent searches</span><button class="clear-history">Clear all</button></div>';
-      history.forEach(q => {
-        html += `<div class="history-item" data-query="${q}">
-          <span class="query">${q}</span>
-          <button class="delete-item" data-query="${q}">✕</button>
-        </div>`;
+      // -------------------------------------------------------------------- events
+      input.addEventListener('input', () => {
+        const value = input.value;
+        clearBtn.hidden = !value;
+        const q = value.trim();
+        clearTimeout(state.debounce);
+        if (q.length < MIN_CHARS) {
+          toIdle(q.length === 1 ? 'Keep typing…' : '');
+          return;
+        }
+        state.debounce = setTimeout(() => { if (q !== state.query) startSearch(q); }, DEBOUNCE_MS);
       });
-      historyContainer.innerHTML = html;
-      historyContainer.querySelectorAll('.history-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-          if (e.target.classList.contains('delete-item')) return;
-          const query = item.dataset.query;
-          input.value = query;
-          historyContainer.classList.remove('show');
-          input.dispatchEvent(new Event('input'));
-        });
-      });
-      historyContainer.querySelectorAll('.delete-item').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const query = btn.dataset.query;
-          removeFromHistory(query);
-        });
-      });
-      const clearBtn = historyContainer.querySelector('.clear-history');
-      if (clearBtn) clearBtn.addEventListener('click', () => clearHistory());
-    }
 
-    input.addEventListener('focus', () => {
-      if (getHistory().length > 0) renderHistory();
-    });
-    input.addEventListener('blur', () => {
-      setTimeout(() => historyContainer.classList.remove('show'), 200);
-    });
-    input.addEventListener('change', () => {
-      const q = input.value.trim();
-      if (q.length >= 2) addToHistory(q);
-    });
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const q = input.value.trim();
+        if (q.length < MIN_CHARS) { input.focus(); return; }
+        addToHistory(q);
+        startSearch(q);
+        if (window.matchMedia('(pointer: coarse)').matches) input.blur(); // dismiss the on-screen keyboard
+      });
 
-    // Initial API test (silent)
-    (async function testApi() {
-      try {
-        const test = await window.searchMovies('test', 1);
-        if (test.results) console.log('TMDB API working');
-        else console.warn('TMDB API warning');
-      } catch (err) {
-        console.error('TMDB API key error:', err);
+      input.addEventListener('change', () => {
+        const q = input.value.trim();
+        if (q.length >= MIN_CHARS && q === state.query) addToHistory(q);
+      });
+
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && input.value) {
+          event.preventDefault();
+          clearInput();
+        }
+      });
+
+      function clearInput() {
+        input.value = '';
+        clearBtn.hidden = true;
+        toIdle('');
+        input.focus();
+      }
+      clearBtn.addEventListener('click', clearInput);
+
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver((entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) checkSentinel();
+        }, { rootMargin: '700px 0px' }).observe(sentinel);
+      } else {
+        window.addEventListener('scroll', checkSentinel, { passive: true });
+      }
+
+      // -------------------------------------------------------------------- start
+      const initial = (new URLSearchParams(location.search).get('q') || '').trim();
+      if (initial.length >= MIN_CHARS) {
+        input.value = initial;
+        clearBtn.hidden = false;
+        startSearch(initial);
+      } else {
+        toIdle('');
+        if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) input.focus();
       }
     })();
-  </script>
-
-  <!-- Service Worker & Install Prompt (unchanged) -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
-          .then(reg => console.log('SW registered:', reg))
-          .catch(err => console.log('SW registration failed:', err));
-      });
-    }
-
-    let deferredPrompt;
-    const installBtn = document.getElementById('installAppBtn');
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      if (installBtn) installBtn.style.display = 'block';
-    });
-    if (installBtn) {
-      installBtn.addEventListener('click', async () => {
-        if (!deferredPrompt) return;
-        installBtn.style.display = 'none';
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User ${outcome} the installation`);
-        deferredPrompt = null;
-      });
-    }
   </script>
 </body>
 </html>
