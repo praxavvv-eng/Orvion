@@ -6,7 +6,8 @@
   'use strict';
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reducedMotion = () => document.documentElement.getAttribute('data-motion') === 'off' ||
+    (!document.documentElement.hasAttribute('data-motion') && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   // ---------------------------------------------------------------------------
   // Tiny DOM helper
@@ -58,7 +59,17 @@
     alert: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.8v5M12 16.2h.01"/>',
     film: '<rect x="4" y="5" width="16" height="14" rx="2.5"/><path d="M8.5 5v14M15.5 5v14M4 9.5h4.5M4 14.5h4.5M15.5 9.5H20M15.5 14.5H20"/>',
     refresh: '<path d="M20 11a8 8 0 0 0-14.3-4M4 5v4h4M4 13a8 8 0 0 0 14.3 4M20 19v-4h-4"/>',
-    list: '<path d="M8 6.5h11M8 12h11M8 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01"/>'
+    list: '<path d="M8 6.5h11M8 12h11M8 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01"/>',
+    chart: '<path d="M5 20V11M12 20V4M19 20v-6"/>',
+    tv: '<rect x="3.5" y="6" width="17" height="11.5" rx="2.5"/><path d="M8.5 20.5h7M12 17.5v3M9 3l3 3 3-3"/>',
+    trophy: '<path d="M8 4.5h8v5a4 4 0 0 1-8 0zM8 6.5H5v1.5a3 3 0 0 0 3 3M16 6.5h3v1.5a3 3 0 0 1-3 3M12 13.5V17M8.5 20h7M10 17h4"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    layers: '<path d="M12 4l8.5 4.5L12 13 3.5 8.5zM3.5 12.5L12 17l8.5-4.5M3.5 16.5L12 21l8.5-4.5"/>',
+    undo: '<path d="M9 8H5V4M5.5 8A8 8 0 1 1 4 13"/>',
+    sparkle: '<path d="M12 3.5l1.9 5.2 5.1 1.8-5.1 1.8L12 17.5l-1.9-5.2L5 10.5l5.1-1.8zM18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.4 0 2-.9 2-1.8 0-1.2-.9-1.5-.9-2.6 0-1 .8-1.6 1.8-1.6H17a3.5 3.5 0 0 0 3.5-3.5C20.5 6.7 16.7 3.5 12 3.5zM7.5 12h.01M9.5 8h.01M14 7.5h.01"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+    flag: '<path d="M6 20.5V4M6 5h11l-2 3.5L17 12H6"/>'
   };
 
   function icon(name, size) {
@@ -79,8 +90,22 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Category suggestion: TMDB only knows movie/tv, Orvion has movie/series/anime/kdrama.
+  // ---------------------------------------------------------------------------
+  function suggestCategory(type, lang, genres) {
+    if (type !== 'tv') return 'movie';
+    const ids = (Array.isArray(genres) ? genres : []).map((g) => (g && typeof g === 'object' ? g.id : g));
+    if (lang === 'ko') return 'kdrama';
+    if (lang === 'ja' && ids.indexOf(16) !== -1) return 'anime';
+    return 'series';
+  }
+
+  // ---------------------------------------------------------------------------
   // Formatting helpers
   // ---------------------------------------------------------------------------
+  function formatNumber(value) {
+    try { return new Intl.NumberFormat().format(Math.round(Number(value) || 0)); } catch (e) { return String(Math.round(Number(value) || 0)); }
+  }
   function yearOf(item) {
     const date = (item && (item.release_date || item.first_air_date)) || '';
     const year = String(date).slice(0, 4);
@@ -106,6 +131,40 @@
   /** Poster URL as stored in Firestore (w500, same as the previous version). */
   function storedPoster(item) {
     return item && item.poster_path ? window.IMG_BASE + item.poster_path : '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Progress visuals
+  // ---------------------------------------------------------------------------
+  /** <div class="bar-track"><i style="--p:42%"></i></div> */
+  function progressBar(pct, options) {
+    const value = Math.max(0, Math.min(100, Number(pct) || 0));
+    const track = el('div', { class: 'bar-track' + (options && options.done ? ' done' : ''), attrs: { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(value) } });
+    const fill = document.createElement('i');
+    fill.style.setProperty('--p', value + '%');
+    track.appendChild(fill);
+    return track;
+  }
+
+  /** Circular progress. Returns { node, set(pct, done) }. */
+  function ring(pct, size, labelText) {
+    const C = 2 * Math.PI * 26;
+    const node = el('div', { class: 'ring' });
+    node.style.setProperty('--s', (size || 56) + 'px');
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 64 64');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = '<circle class="ring-bg" cx="32" cy="32" r="26"/><circle class="ring-fg" cx="32" cy="32" r="26"/>';
+    const label = el('span', { class: 'ring-label' });
+    node.append(svg, label);
+    function set(value, done, text) {
+      const v = Math.max(0, Math.min(100, Number(value) || 0));
+      node.classList.toggle('done', !!done);
+      label.textContent = text != null ? text : Math.round(v) + '%';
+      requestAnimationFrame(() => node.style.setProperty('--c', ((v / 100) * C).toFixed(2)));
+    }
+    set(pct, false, labelText);
+    return { node, set };
   }
 
   // ---------------------------------------------------------------------------
@@ -234,6 +293,177 @@
       first.focus();
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Bottom-sheet helpers shared by every module
+  // ---------------------------------------------------------------------------
+  let choiceSeq = 0;
+
+  /** Accessible radio group rendered as tappable chips. */
+  function choiceGroup(config) {
+    const name = 'choice-' + (++choiceSeq);
+    const fieldset = el('fieldset', { class: 'field' }, el('legend', { class: 'field-label', text: config.legend }));
+    const grid = el('div', { class: 'choice-grid cols-' + (config.columns || 2) });
+    const inputs = [];
+
+    config.options.forEach((opt) => {
+      const input = el('input', { attrs: { type: 'radio', name: name, value: opt.value } });
+      input.checked = opt.value === config.value;
+      input.addEventListener('change', () => { if (input.checked && config.onChange) config.onChange(opt.value); });
+      inputs.push(input);
+
+      const face = el('span', { class: 'choice-face' });
+      if (opt.swatch) {
+        const dot = el('span', { class: 'choice-swatch', attrs: { 'aria-hidden': 'true' } });
+        dot.style.background = opt.swatch;
+        face.appendChild(dot);
+      }
+      face.appendChild(el('span', { text: opt.label }));
+      grid.appendChild(el('label', { class: 'choice' }, input, face));
+    });
+
+    fieldset.appendChild(grid);
+    if (config.hint) fieldset.appendChild(el('p', { class: 'field-hint', text: config.hint }));
+    return {
+      node: fieldset,
+      get value() {
+        const checked = inputs.find((input) => input.checked);
+        return checked ? checked.value : null;
+      },
+      set(value) {
+        inputs.forEach((input) => { input.checked = input.value === value; });
+      }
+    };
+  }
+
+  /** Slider with a live value. config: { label, min, max, step, value, format(v), onInput(v), hint } */
+  function rangeField(config) {
+    const id = 'range-' + (++choiceSeq);
+    const valueNode = el('span', { class: 'range-value' });
+    const input = el('input', { class: 'range', attrs: { type: 'range', id: id, min: config.min, max: config.max, step: config.step || 1 } });
+    const fmt = config.format || ((v) => String(v));
+    function paint() {
+      const pct = ((Number(input.value) - Number(config.min)) / (Number(config.max) - Number(config.min))) * 100;
+      input.style.setProperty('--fill', pct + '%');
+      valueNode.textContent = fmt(Number(input.value));
+    }
+    input.value = config.value;
+    input.addEventListener('input', () => { paint(); if (config.onInput) config.onInput(Number(input.value)); });
+    paint();
+    const node = el('div', { class: 'range-field' },
+      el('div', { class: 'range-head' }, el('label', { text: config.label, attrs: { for: id } }), valueNode),
+      input,
+      config.hint ? el('p', { class: 'field-hint', text: config.hint }) : null
+    );
+    return { node, set(value) { input.value = value; paint(); } };
+  }
+
+  function setBusy(button, busy) {
+    button.disabled = busy;
+    button.classList.toggle('is-busy', busy);
+    button.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+
+  /** Swipe the handle down to dismiss a bottom sheet (phones only; desktop sheets are centred dialogs). */
+  function enableSheetDrag(root, sheet, handle) {
+    let startY = 0;
+    let dy = 0;
+    let t0 = 0;
+    let pid = null;
+    let dragging = false;
+    const phone = () => window.matchMedia('(max-width: 719px)').matches;
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (!phone() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      dragging = true;
+      pid = e.pointerId;
+      startY = e.clientY;
+      dy = 0;
+      t0 = performance.now();
+      try { handle.setPointerCapture(pid); } catch (err) { /* ignore */ }
+      sheet.classList.add('dragging');
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging || e.pointerId !== pid) return;
+      dy = Math.max(0, e.clientY - startY);
+      sheet.style.transform = 'translateY(' + dy + 'px)';
+    });
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      sheet.classList.remove('dragging');
+      const velocity = dy / Math.max(1, performance.now() - t0);
+      if (dy > 120 || (velocity > 0.6 && dy > 40)) {
+        closeModal(root);
+        setTimeout(() => { sheet.style.transform = ''; }, 360);
+      } else {
+        sheet.style.transform = '';
+      }
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
+  /** Create a modal root + sheet, attached to <body>. extraClass e.g. "details", "tracker", "settings". */
+  function createSheetRoot(id, titleId, extraClass) {
+    const root = el('div', { class: 'modal', attrs: { id: id, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId } });
+    const sheet = el('div', { class: 'sheet ' + (extraClass || '') });
+    const grab = el('span', { class: 'sheet-grab', attrs: { 'aria-hidden': 'true' } });
+    sheet.appendChild(grab);
+    root.appendChild(sheet);
+    document.body.appendChild(root);
+    bindModal(root);
+    enableSheetDrag(root, sheet, grab);
+    return { root, sheet };
+  }
+
+  // ---------------------------------------------------------------------------
+  // "Already in your list" badges. The library snapshot is cached by js/watchlist.js; this only reads it.
+  // ---------------------------------------------------------------------------
+  const LIB_KEY = 'orvion:lib:v1';
+  let savedIndex = null;
+
+  function buildSavedIndex() {
+    savedIndex = new Map();
+    try {
+      const cached = JSON.parse(localStorage.getItem(LIB_KEY) || 'null');
+      if (cached && Array.isArray(cached.items)) {
+        cached.items.forEach((entry) => {
+          const type = entry.category === 'movie' ? 'movie' : 'tv';
+          const key = type + ':' + entry.id;
+          const raw = String(entry.status || '').toLowerCase();
+          const status = raw === 'completed' ? 'watched' : (['plan', 'watching', 'watched', 'dropped'].indexOf(raw) !== -1 ? raw : 'plan');
+          if (!savedIndex.has(key)) savedIndex.set(key, status);
+        });
+      }
+    } catch (e) { /* corrupt or unavailable – badges simply don't show */ }
+  }
+
+  function savedStatus(id, type) {
+    if (!savedIndex) buildSavedIndex();
+    return savedIndex.get(type + ':' + id) || '';
+  }
+
+  const STATUS_ICON = { plan: 'bookmark', watching: 'play', watched: 'check', dropped: 'close' };
+  const STATUS_TEXT = { plan: 'Plan to watch', watching: 'Watching', watched: 'Watched', dropped: 'Dropped' };
+
+  function applySavedBadge(card) {
+    const poster = card.querySelector('.card-poster');
+    if (!poster) return;
+    const status = savedStatus(card.dataset.id, card.dataset.type);
+    let badge = poster.querySelector('.saved-badge');
+    if (!status) { if (badge) badge.remove(); return; }
+    if (badge && badge.dataset.status === status) return;
+    if (badge) badge.remove();
+    badge = el('span', { class: 'saved-badge', data: { status: status }, attrs: { role: 'img', 'aria-label': 'In your list: ' + STATUS_TEXT[status] } }, icon(STATUS_ICON[status], 15));
+    poster.appendChild(badge);
+  }
+
+  function decorateSaved(scope) {
+    (scope || document).querySelectorAll('.card[data-id][data-type]:not(.card-saved)').forEach(applySavedBadge);
+  }
+
+  window.addEventListener('orvion:library-updated', () => { savedIndex = null; decorateSaved(); });
 
   // ---------------------------------------------------------------------------
   // Segmented control with a sliding "glass lens" indicator
@@ -453,7 +683,8 @@
     open.appendChild(el('span', { class: 'card-sub', text: [year, typeLabel(type)].filter(Boolean).join(' · ') }));
     card.appendChild(open);
 
-    const addPayload = () => ({ id: id, title: title, poster: storedPoster(item), type: type });
+    const addPayload = () => ({ id: id, title: title, poster: storedPoster(item), type: type, category: suggestCategory(type, item.original_language, item.genre_ids) });
+    applySavedBadge(card);
     card.appendChild(el('button', {
       class: 'card-add',
       attrs: { type: 'button', 'aria-label': 'Add ' + title + ' to watchlist' },
@@ -485,14 +716,37 @@
       // Smaller rendition of the same TMDB image; the stored value is not touched.
       poster.appendChild(posterImage(posterUrl.replace('/t/p/w500/', '/t/p/w342/'), ''));
     }
+    if (o.progress) {
+      const bar = el('span', { class: 'card-progress' + (o.progress.done ? ' done' : ''), attrs: { 'aria-hidden': 'true' } });
+      const fill = document.createElement('i');
+      fill.style.setProperty('--p', Math.max(0, Math.min(100, o.progress.pct || 0)) + '%');
+      bar.appendChild(fill);
+      poster.appendChild(bar);
+    }
     open.appendChild(poster);
     open.appendChild(el('span', { class: 'card-title', text: title }));
     open.appendChild(el('span', { class: 'card-sub' },
       el('span', { class: 'status-dot', attrs: { 'data-status': o.status || '', 'aria-hidden': 'true' } }),
       el('span', { class: 'sr-only', text: o.statusLabel ? 'Status: ' + o.statusLabel + '. ' : '' }),
-      el('span', { text: o.subText || o.categoryLabel || '' })
+      el('span', { class: o.subAccent ? 'card-next' : '', text: o.subText || o.categoryLabel || '' })
     ));
     card.appendChild(open);
+
+    if (o.quick && typeof o.quick.onClick === 'function') {
+      const quick = el('button', {
+        class: 'card-quick',
+        attrs: { type: 'button', 'aria-label': o.quick.label || 'Mark next episode watched' },
+        on: {
+          click: async (e) => {
+            e.stopPropagation();
+            if (quick.classList.contains('is-busy')) return;
+            quick.classList.add('is-busy');
+            try { await o.quick.onClick(entry, card); } finally { quick.classList.remove('is-busy'); }
+          }
+        }
+      }, icon('check', 20));
+      card.appendChild(quick);
+    }
 
     if (typeof o.onManage === 'function') {
       card.appendChild(el('button', {
@@ -559,7 +813,7 @@
       el('button', {
         class: 'btn btn-glass',
         attrs: { type: 'button', 'aria-label': 'Add ' + title + ' to watchlist' },
-        on: { click: () => { if (window.showAddModal) window.showAddModal({ id: id, title: title, poster: storedPoster(item), type: type }); } }
+        on: { click: () => { if (window.showAddModal) window.showAddModal({ id: id, title: title, poster: storedPoster(item), type: type, category: suggestCategory(type, item.original_language, item.genre_ids) }); } }
       }, icon('plus', 18), 'Watchlist')
     ));
     slide.appendChild(body);
@@ -627,7 +881,9 @@
   window.OrvionUI = {
     el, icon, showToast, openModal, closeModal, bindModal, segmented, createState, skeletonCards,
     enableDragScroll, stagger, attachLongPress, posterImage, posterFallback, typeLabel,
-    yearOf, ratingOf, typeOf, titleOf, storedPoster, reducedMotion
+    yearOf, ratingOf, typeOf, titleOf, storedPoster, reducedMotion,
+    choiceGroup, rangeField, setBusy, createSheetRoot, enableSheetDrag, progressBar, ring,
+    suggestCategory, formatNumber, savedStatus, decorateSaved
   };
   window.createSmallCard = createSmallCard;
   window.createWatchlistCard = createWatchlistCard;

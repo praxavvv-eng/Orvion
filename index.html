@@ -6,21 +6,12 @@
   <title>Orvion · Home</title>
   <meta name="description" content="Discover trending movies and TV shows and keep track of what you watch.">
 
-  <!-- Apply the saved theme before first paint and catch the install prompt early (handled in js/app.js) -->
-  <script>
-    (function () {
-      try {
-        var root = document.documentElement;
-        var mode = localStorage.getItem('orvion-theme') || 'dark';
-        var color = localStorage.getItem('orvion-color') || 'purple';
-        if (mode === 'system') mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        root.setAttribute('data-theme', mode === 'light' ? 'light' : 'dark');
-        root.setAttribute('data-color', color);
-      } catch (e) {}
-      window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__orvionInstallEvent = e; });
-    })();
-  </script>
+  <!-- Appearance (theme, accent, glass, density, motion) is applied before first paint -->
+  <script src="js/boot.js"></script>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="preconnect" href="https://image.tmdb.org">
   <link rel="preconnect" href="https://api.themoviedb.org" crossorigin>
   <link rel="stylesheet" href="css/style.css">
@@ -32,16 +23,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Orvion">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="icon" type="image/png" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="/icons/logo.svg">
+  <link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta property="og:title" content="Orvion">
+  <meta property="og:description" content="Discover and track movies, series, anime and K-dramas.">
+  <meta property="og:image" content="/icons/og-image.png">
 </head>
 <body class="home-page">
   <a class="skip-link" href="#main">Skip to content</a>
 
   <header class="topbar">
     <a class="brand" href="index.html" aria-label="Orvion home">
-      <img class="brand-mark" src="icons/icon-192.png" width="30" height="30" alt="">
-      <span>Orvion</span>
+      <img class="brand-mark" src="icons/logo.svg" width="40" height="40" alt="">
+      <span class="brand-name">Orvion</span>
     </a>
     <div class="topbar-actions">
       <button id="installAppBtn" class="pill-btn" type="button" hidden>
@@ -62,6 +57,13 @@
         <div class="hero-skeleton" aria-hidden="true"></div>
       </div>
       <div class="hero-dots" id="heroDots"></div>
+    </section>
+
+    <section class="section cw-section" id="cwSection" aria-labelledby="cwTitle" hidden>
+      <div class="section-head">
+        <h2 class="section-title" id="cwTitle">Continue watching<span class="count-badge" aria-hidden="true"></span></h2>
+      </div>
+      <div class="row" id="cwScroll"></div>
     </section>
 
     <section class="section" aria-labelledby="trendingTitle">
@@ -112,6 +114,10 @@
     <a class="dock-item" href="watchlist.html">
       <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 4.5h10a1 1 0 0 1 1 1V20l-6-4-6 4V5.5a1 1 0 0 1 1-1z"/></svg>
       <span>Watchlist</span>
+    </a>
+    <a class="dock-item" href="stats.html">
+      <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>
+      <span>Stats</span>
     </a>
   </nav>
 

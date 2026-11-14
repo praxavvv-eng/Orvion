@@ -1,22 +1,27 @@
 // js/app.js – shared app behaviour + Home and Watchlist page controllers (ES module)
 //
 // Responsibilities
-//   • theme + accent customisation, service-worker registration, install prompt
-//   • shared sheets: add-to-watchlist, movie/TV details, manage entry, appearance
-//   • Home page and Watchlist page controllers
-// Discover logic lives in js/discover.js, search logic in search.html.
+//   • appearance wiring, service-worker registration, install prompt
+//   • shared sheets: add-to-watchlist, movie/TV details, manage entry
+//   • Home page (incl. Continue watching) and Watchlist page controllers
+// Appearance engine: js/boot.js · settings UI: js/appearance.js · episode tracker: js/tracker.js
+// Discover logic lives in js/discover.js, search logic in js/search.js, statistics in js/stats.js.
 import {
   addOrUpdateWatchlist,
   removeFromWatchlist,
   updateWatchlistStatus,
   loadLibrary,
   findEntriesByTmdbId,
+  getLibraryCached,
+  progressSummary,
   STATUSES,
   CATEGORIES,
   normalizeStatus,
   statusLabel,
   categoryLabel
 } from './watchlist.js';
+import { initAppearance } from './appearance.js';
+import { openTracker, markNextEpisode, canTrack } from './tracker.js';
 
 const UI = window.OrvionUI;
 const { el, icon, openModal, closeModal, bindModal } = UI;
@@ -24,19 +29,8 @@ const { el, icon, openModal, closeModal, bindModal } = UI;
 const $ = (id) => document.getElementById(id);
 
 // =============================================================================
-// 1. THEME
+// 1. SHARED HELPERS
 // =============================================================================
-const THEME_KEY = 'orvion-theme';
-const COLOR_KEY = 'orvion-color';
-const THEME_COLORS = { dark: '#0b0b0f', light: '#f4f3f8' };
-const ACCENTS = [
-  { value: 'purple', label: 'Violet', swatch: '#7c3aed' },
-  { value: 'blue', label: 'Blue', swatch: '#3b82f6' },
-  { value: 'red', label: 'Red', swatch: '#ef4444' },
-  { value: 'green', label: 'Green', swatch: '#10b981' }
-];
-const systemQuery = window.matchMedia('(prefers-color-scheme: dark)');
-
 function readPref(key, fallback) {
   try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
 }
@@ -45,123 +39,10 @@ function writePref(key, value) {
   try { localStorage.setItem(key, value); } catch (e) { /* storage unavailable – preference lasts for this visit only */ }
 }
 
-function applyTheme(mode) {
-  const resolved = mode === 'system' ? (systemQuery.matches ? 'dark' : 'light') : (mode === 'light' ? 'light' : 'dark');
-  document.documentElement.setAttribute('data-theme', resolved);
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', THEME_COLORS[resolved]);
-}
-
-function applyAccent(color) {
-  const valid = ACCENTS.some((a) => a.value === color) ? color : 'purple';
-  document.documentElement.setAttribute('data-color', valid);
-}
-
-function initTheme() {
-  applyTheme(readPref(THEME_KEY, 'dark'));
-  applyAccent(readPref(COLOR_KEY, 'purple'));
-  systemQuery.addEventListener('change', () => {
-    if (readPref(THEME_KEY, 'dark') === 'system') applyTheme('system');
-  });
-}
-
-// =============================================================================
-// 2. SHARED FORM + SHEET HELPERS
-// =============================================================================
-let choiceSeq = 0;
-
-/** Accessible radio group rendered as tappable chips. */
-function choiceGroup(config) {
-  const name = 'choice-' + (++choiceSeq);
-  const fieldset = el('fieldset', { class: 'field' }, el('legend', { class: 'field-label', text: config.legend }));
-  const grid = el('div', { class: 'choice-grid cols-' + (config.columns || 2) });
-  const inputs = [];
-
-  config.options.forEach((opt) => {
-    const input = el('input', { attrs: { type: 'radio', name: name, value: opt.value } });
-    input.checked = opt.value === config.value;
-    input.addEventListener('change', () => { if (input.checked && config.onChange) config.onChange(opt.value); });
-    inputs.push(input);
-
-    const face = el('span', { class: 'choice-face' });
-    if (opt.swatch) {
-      const dot = el('span', { class: 'choice-swatch', attrs: { 'aria-hidden': 'true' } });
-      dot.style.background = opt.swatch;
-      face.appendChild(dot);
-    }
-    face.appendChild(el('span', { text: opt.label }));
-    grid.appendChild(el('label', { class: 'choice' }, input, face));
-  });
-
-  fieldset.appendChild(grid);
-  return {
-    node: fieldset,
-    get value() {
-      const checked = inputs.find((input) => input.checked);
-      return checked ? checked.value : null;
-    },
-    set(value) {
-      inputs.forEach((input) => { input.checked = input.value === value; });
-    }
-  };
-}
-
-function createSheetRoot(id, titleId, extraClass) {
-  const root = el('div', { class: 'modal', attrs: { id: id, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId } });
-  const sheet = el('div', { class: 'sheet ' + (extraClass || '') });
-  root.appendChild(sheet);
-  document.body.appendChild(root);
-  bindModal(root);
-  return { root, sheet };
-}
-
-function setBusy(button, busy) {
-  button.disabled = busy;
-  button.classList.toggle('is-busy', busy);
-  button.setAttribute('aria-busy', busy ? 'true' : 'false');
-}
+const { choiceGroup, createSheetRoot, setBusy } = UI;
 
 function dispatchWatchlistChanged() {
   window.dispatchEvent(new CustomEvent('orvion:watchlist-changed'));
-}
-
-// =============================================================================
-// 3. APPEARANCE SHEET
-// =============================================================================
-let appearanceSheet = null;
-
-function showThemeSettings() {
-  if (!appearanceSheet) {
-    const { root, sheet } = createSheetRoot('themeSettingsModal', 'appearanceTitle', 'compact-sheet');
-    const modeGroup = choiceGroup({
-      legend: 'Mode',
-      columns: 3,
-      value: readPref(THEME_KEY, 'dark'),
-      options: [
-        { value: 'dark', label: 'Dark' },
-        { value: 'light', label: 'Light' },
-        { value: 'system', label: 'System' }
-      ],
-      onChange: (value) => { writePref(THEME_KEY, value); applyTheme(value); }
-    });
-    const accentGroup = choiceGroup({
-      legend: 'Accent color',
-      columns: 2,
-      value: readPref(COLOR_KEY, 'purple'),
-      options: ACCENTS,
-      onChange: (value) => { writePref(COLOR_KEY, value); applyAccent(value); }
-    });
-    sheet.append(
-      el('div', { class: 'sheet-head' }, el('h3', { class: 'sheet-title', text: 'Appearance', attrs: { id: 'appearanceTitle' } })),
-      el('div', { class: 'sheet-body' }, modeGroup.node, accentGroup.node),
-      el('div', { class: 'sheet-actions' },
-        el('button', { class: 'btn btn-primary btn-block', text: 'Done', attrs: { type: 'button' }, on: { click: () => closeModal(root) } }))
-    );
-    appearanceSheet = { root, modeGroup, accentGroup };
-  }
-  appearanceSheet.modeGroup.set(readPref(THEME_KEY, 'dark'));
-  appearanceSheet.accentGroup.set(readPref(COLOR_KEY, 'purple'));
-  openModal(appearanceSheet.root);
 }
 
 // =============================================================================
@@ -216,6 +97,7 @@ function showAddModal(item) {
     poster: typeof item.poster === 'string' ? item.poster : '',
     type: item.type === 'tv' ? 'tv' : 'movie'
   };
+  current.category = CATEGORIES.some((c) => c.value === item.category) ? item.category : (current.type === 'tv' ? 'series' : 'movie');
   addItem = current;
 
   sheet.title.textContent = 'Add to watchlist';
@@ -223,7 +105,7 @@ function showAddModal(item) {
   sheet.hint.hidden = true;
   sheet.hint.textContent = '';
   sheet.label.textContent = 'Save';
-  sheet.categoryGroup.set(current.type === 'tv' ? 'series' : 'movie');
+  sheet.categoryGroup.set(current.category);
   sheet.statusGroup.set('plan');
   setBusy(sheet.save, false);
   openModal(sheet.root, { initialFocus: 'input:checked' });
@@ -372,9 +254,10 @@ function renderDetails(item, type) {
   const addBtn = el('button', { class: 'btn btn-primary', attrs: { type: 'button', id: 'detailsAddBtn' } },
     icon('plus', 18), el('span', { class: 'btn-label', text: 'Add to watchlist' }));
   addBtn.addEventListener('click', () => {
-    showAddModal({ id: item.id, title: title, poster: UI.storedPoster(item), type: type });
+    showAddModal({ id: item.id, title: title, poster: UI.storedPoster(item), type: type, category: UI.suggestCategory(type, item.original_language, item.genres) });
   });
-  const actions = el('div', { class: 'details-actions' }, addBtn);
+  const trackBtn = el('button', { class: 'btn btn-glass', attrs: { type: 'button', id: 'detailsTrackBtn', hidden: true } }, icon('layers', 18), 'Track episodes');
+  const actions = el('div', { class: 'details-actions' }, addBtn, trackBtn);
 
   const videos = item.videos && Array.isArray(item.videos.results) ? item.videos.results : [];
   const trailer = videos.find((v) => v && v.type === 'Trailer' && v.site === 'YouTube' && /^[\w-]{6,20}$/.test(v.key || ''));
@@ -445,6 +328,14 @@ async function refreshDetailsStatus() {
   } else {
     label.textContent = 'Add to watchlist';
   }
+
+  // Episode tracking is offered once a series / anime / K-drama is in the list.
+  const trackBtn = detailsSheet.scroll.querySelector('#detailsTrackBtn');
+  if (trackBtn) {
+    const entry = result.success ? result.items.find(canTrack) : null;
+    trackBtn.hidden = !entry;
+    trackBtn.onclick = entry ? () => { closeModal(detailsSheet.root); openTracker(entry); } : null;
+  }
 }
 
 async function showItemDetails(id, type) {
@@ -500,6 +391,13 @@ function ensureManageSheet() {
   const cancelBtn = el('button', { class: 'btn btn-glass', text: 'Cancel', attrs: { type: 'button' }, on: { click: () => closeModal(root) } });
   const saveBtn = el('button', { class: 'btn btn-primary', attrs: { type: 'button' } }, el('span', { class: 'btn-label', text: 'Save' }));
   const mainActions = el('div', { class: 'sheet-actions' }, removeBtn, cancelBtn, saveBtn);
+  const trackBtn = el('button', { class: 'btn btn-glass btn-block', attrs: { type: 'button' } }, icon('layers', 18), 'Track episodes');
+  trackBtn.addEventListener('click', () => {
+    const entry = manageEntry;
+    if (!entry) return;
+    closeModal(root);
+    openTracker(entry);
+  });
 
   const confirmText = el('p', { class: 'confirm-text' });
   const keepBtn = el('button', { class: 'btn btn-glass', text: 'Keep it', attrs: { type: 'button' } });
@@ -509,7 +407,7 @@ function ensureManageSheet() {
 
   sheet.append(
     el('div', { class: 'sheet-head' }, title, sub),
-    el('div', { class: 'sheet-body' }, statusGroup.node),
+    el('div', { class: 'sheet-body' }, statusGroup.node, trackBtn),
     mainActions,
     confirmBox
   );
@@ -536,7 +434,10 @@ function ensureManageSheet() {
     const result = await updateWatchlistStatus(entry.docId, newStatus);
     setBusy(saveBtn, false);
     if (!result.success) { UI.showToast(result.message || 'Failed to update status', 'error'); return; }
-    watchlistState.apply(entry.docId, (e) => { e.status = newStatus; });
+    watchlistState.apply(entry.docId, (e) => {
+      e.status = newStatus;
+      if (newStatus === 'watched') e.completedAt = result.completedAt || Date.now();
+    });
     UI.showToast('Moved to ' + statusLabel(newStatus), 'success');
     closeModal(root);
   });
@@ -553,7 +454,7 @@ function ensureManageSheet() {
     closeModal(root);
   });
 
-  manageSheet = { root, sub, statusGroup, showConfirm };
+  manageSheet = { root, sub, statusGroup, showConfirm, trackBtn };
   return manageSheet;
 }
 
@@ -564,6 +465,7 @@ function showManageSheet(entry) {
   sheet.sub.textContent = entry.title || '';
   sheet.statusGroup.set(normalizeStatus(entry.status));
   sheet.showConfirm(false);
+  sheet.trackBtn.hidden = !canTrack(entry);
   openModal(sheet.root, { initialFocus: 'input:checked' });
 }
 
@@ -688,6 +590,20 @@ async function loadHomeSection(section, force) {
 }
 
 let heroObserver = null;
+let heroTimer = null;
+let heroPausedUntil = 0;
+
+function startHeroAutoplay(track, count) {
+  clearInterval(heroTimer);
+  if (count < 2 || UI.reducedMotion()) return;
+  const pause = () => { heroPausedUntil = Date.now() + 12000; };
+  ['pointerdown', 'touchstart', 'wheel', 'focusin', 'keydown'].forEach((evt) => track.addEventListener(evt, pause, { passive: true }));
+  heroTimer = setInterval(() => {
+    if (document.hidden || Date.now() < heroPausedUntil || !track.isConnected) return;
+    const index = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+    track.scrollTo({ left: track.clientWidth * ((index + 1) % count), behavior: 'smooth' });
+  }, 7000);
+}
 
 function renderHero(items) {
   const hero = $('hero');
@@ -731,6 +647,7 @@ function renderHero(items) {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
         const index = slideNodes.indexOf(entry.target);
+        slideNodes.forEach((node, i) => node.classList.toggle('is-active', i === index));
         dotNodes.forEach((dot, i) => {
           dot.classList.toggle('active', i === index);
           if (i === index) dot.setAttribute('aria-current', 'true');
@@ -740,6 +657,7 @@ function renderHero(items) {
     }, { root: track, threshold: 0.6 });
     slideNodes.forEach((node) => heroObserver.observe(node));
   }
+  startHeroAutoplay(track, slideNodes.length);
 }
 
 /** Desktop previous/next buttons for horizontal rows (hidden on touch via CSS). */
@@ -782,6 +700,8 @@ async function initHome() {
     console.warn('Home row controls could not be initialized:', error);
   }
 
+  void initContinueWatching();
+
   // Each section handles its own failure; one broken endpoint must not block the others.
   const results = await Promise.all(HOME_SECTIONS.map((section) => loadHomeSection(section, false)));
   const trending = results[0];
@@ -793,15 +713,88 @@ async function initHome() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Continue watching (Home): titles in "Watching", most recently updated first
+// ---------------------------------------------------------------------------
+function updatedAt(entry) {
+  const progress = entry && entry.progress;
+  return Math.max(Number(progress && progress.updated) || 0, Number(entry && entry.completedAt) || 0, Number(entry && entry.added) || 0);
+}
+
+function nextLabel(summary) {
+  return summary && summary.next ? 'S' + summary.next.s + ' · E' + summary.next.e + ' next' : '';
+}
+
+function continueCard(entry, rerender) {
+  const summary = progressSummary(entry);
+  const type = entry.category === 'movie' ? 'movie' : 'tv';
+  return window.createWatchlistCard(entry, {
+    status: 'watching',
+    statusLabel: statusLabel('watching'),
+    categoryLabel: categoryLabel(entry.category),
+    subText: nextLabel(summary) || (summary && summary.completed ? 'Caught up' : categoryLabel(entry.category)),
+    subAccent: !!(summary && summary.next),
+    progress: summary && summary.total ? { pct: summary.pct, done: summary.completed } : null,
+    quick: summary && summary.next ? {
+      label: 'Mark S' + summary.next.s + ' E' + summary.next.e + ' watched',
+      onClick: async () => {
+        const result = markNextEpisode(entry);
+        if (!result) return;
+        UI.showToast('Marked S' + result.marked.s + ' · E' + result.marked.e + ' watched', 'success');
+        rerender();
+      }
+    } : null,
+    onOpen: () => { if (canTrack(entry)) openTracker(entry); else showItemDetails(entry.id, type); }
+  });
+}
+
+async function initContinueWatching() {
+  const section = $('cwSection');
+  const row = $('cwScroll');
+  if (!section || !row) return;
+  let entries = [];
+
+  const render = () => {
+    const list = entries
+      .filter((e) => normalizeStatus(e.status) === 'watching')
+      .sort((a, b) => updatedAt(b) - updatedAt(a))
+      .slice(0, 14);
+    section.hidden = !list.length;
+    if (!list.length) return;
+    const badge = section.querySelector('.count-badge');
+    if (badge) badge.textContent = String(list.length);
+    const cards = list.map((entry) => continueCard(entry, render));
+    row.replaceChildren(...cards);
+    UI.stagger(cards);
+  };
+
+  const result = await getLibraryCached();
+  if (!result.success) return; // Continue watching is optional; Home must not show an error for it
+  entries = result.items;
+  window.enableDragScroll(row);
+  render();
+
+  let queued = false;
+  window.addEventListener('orvion:progress-changed', () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; render(); });
+  });
+}
+
 // =============================================================================
 // 8. WATCHLIST PAGE
 // =============================================================================
 const SORT_KEY = 'orvion:watchlist:sort';
 
+const ROW_LIMIT = 24;
+const BATCH_SIZE = 48;
+
 const watchlistState = {
   entries: [],
   status: 'plan',
   category: 'all',
+  query: '',
   sort: 'added',
   loaded: false,
   failed: false,
@@ -836,6 +829,8 @@ function sortEntries(list) {
   const copy = list.slice();
   if (watchlistState.sort === 'title') {
     copy.sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' }));
+  } else if (watchlistState.sort === 'updated') {
+    copy.sort((a, b) => updatedAt(b) - updatedAt(a));
   } else {
     copy.sort((a, b) => (Number(b.added) || 0) - (Number(a.added) || 0));
   }
@@ -855,12 +850,33 @@ function addedText(entry) {
 
 function watchlistCard(entry) {
   const type = entry.category === 'movie' ? 'movie' : 'tv';
+  const status = normalizeStatus(entry.status);
+  const summary = progressSummary(entry);
+  const hasProgress = !!(summary && summary.total);
+  let subText = addedText(entry);
+  let subAccent = false;
+  if (hasProgress && summary.next && status !== 'watched') { subText = nextLabel(summary); subAccent = true; }
+  else if (hasProgress && summary.completed) subText = 'Completed · ' + summary.total + ' eps';
+  else if (hasProgress) subText = summary.watched + ' / ' + summary.total + ' eps';
+
   return window.createWatchlistCard(entry, {
-    status: normalizeStatus(entry.status),
+    status: status,
     statusLabel: statusLabel(entry.status),
     categoryLabel: categoryLabel(entry.category),
-    subText: addedText(entry),
-    onOpen: () => showItemDetails(entry.id, type),
+    subText: subText,
+    subAccent: subAccent,
+    progress: hasProgress ? { pct: summary.pct, done: summary.completed } : null,
+    quick: status === 'watching' && summary && summary.next ? {
+      label: 'Mark ' + nextLabel(summary).replace(' next', '') + ' watched',
+      onClick: async () => {
+        const result = markNextEpisode(entry);
+        if (result) UI.showToast('Marked S' + result.marked.s + ' · E' + result.marked.e + ' watched', 'success');
+      }
+    } : null,
+    onOpen: () => {
+      if (status === 'watching' && canTrack(entry)) openTracker(entry);
+      else showItemDetails(entry.id, type);
+    },
     onManage: showManageSheet
   });
 }
@@ -880,7 +896,10 @@ function initWatchlist() {
   const summary = $('watchlistSummary');
   if (!content || !tabs || !chips) return;
 
-  watchlistState.sort = readPref(SORT_KEY, 'added') === 'title' ? 'title' : 'added';
+  const savedSort = readPref(SORT_KEY, 'added');
+  watchlistState.sort = savedSort === 'title' || savedSort === 'updated' ? savedSort : 'added';
+  const filterInput = $('libFilter');
+  let batchObserver = null;
   if (sortSelect) sortSelect.value = watchlistState.sort;
   readWatchlistHash();
 
@@ -934,6 +953,43 @@ function initWatchlist() {
     segmented.refresh();
   }
 
+  /** Render a long list in batches as the user scrolls, so hundreds of titles never block the page. */
+  function renderBatched(grid, items) {
+    if (batchObserver) { batchObserver.disconnect(); batchObserver = null; }
+    let index = 0;
+    const sentinel = el('div', { class: 'sentinel', attrs: { 'aria-hidden': 'true' } });
+    const more = (first) => {
+      const cards = items.slice(index, index + BATCH_SIZE).map(watchlistCard);
+      index += BATCH_SIZE;
+      grid.append(...cards);
+      if (first) UI.stagger(cards);
+      if (index >= items.length) {
+        sentinel.remove();
+        if (batchObserver) { batchObserver.disconnect(); batchObserver = null; }
+      }
+    };
+    more(true);
+    if (index < items.length) {
+      grid.after(sentinel);
+      if ('IntersectionObserver' in window) {
+        batchObserver = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) more(false); }, { rootMargin: '800px 0px' });
+        batchObserver.observe(sentinel);
+      } else {
+        while (index < items.length) more(false);
+      }
+    }
+  }
+
+  function duplicateNote() {
+    const seen = new Map();
+    watchlistState.entries.forEach((e) => { const k = e.id + ':' + e.category; seen.set(k, (seen.get(k) || 0) + 1); });
+    let extra = 0;
+    seen.forEach((n) => { if (n > 1) extra += n - 1; });
+    if (!extra) return null;
+    return el('p', { class: 'dupe-note', attrs: { role: 'note' } },
+      extra + (extra === 1 ? ' title appears' : ' titles appear') + ' more than once in your library (same TMDB id and category). Orvion never deletes anything automatically – remove the extra copies from the ⋯ menu when you’re ready.');
+  }
+
   function renderSkeleton() {
     const row = el('div', { class: 'row' });
     row.appendChild(UI.skeletonCards(6));
@@ -965,8 +1021,23 @@ function initWatchlist() {
       summary.textContent = total ? total + (total === 1 ? ' title saved' : ' titles saved') : '';
     }
 
-    const inStatus = watchlistState.entries.filter((e) => normalizeStatus(e.status) === watchlistState.status);
+    if (batchObserver) { batchObserver.disconnect(); batchObserver = null; }
+    const query = watchlistState.query.trim().toLowerCase();
+    const inStatusAll = watchlistState.entries.filter((e) => normalizeStatus(e.status) === watchlistState.status);
+    const inStatus = query ? inStatusAll.filter((e) => String(e.title || '').toLowerCase().indexOf(query) !== -1) : inStatusAll;
     renderChips(inStatus);
+    const dupes = duplicateNote();
+
+    if (query && !inStatus.length) {
+      content.replaceChildren(UI.createState({
+        icon: 'search',
+        title: 'No matches',
+        text: 'Nothing in this tab matches “' + watchlistState.query.trim() + '”.',
+        actionLabel: 'Clear filter',
+        onAction: () => { watchlistState.query = ''; if (filterInput) filterInput.value = ''; render(); }
+      }));
+      return;
+    }
 
     if (!inStatus.length) {
       const copy = EMPTY_COPY[watchlistState.status];
@@ -983,10 +1054,8 @@ function initWatchlist() {
     if (watchlistState.category !== 'all') {
       const filtered = sortEntries(inStatus.filter((e) => categoryKey(e) === watchlistState.category));
       const grid = el('div', { class: 'grid' });
-      const cards = filtered.map(watchlistCard);
-      grid.append(...cards);
-      content.replaceChildren(grid);
-      UI.stagger(cards);
+      content.replaceChildren(...(dupes ? [dupes] : []), grid);
+      renderBatched(grid, filtered);
       return;
     }
 
@@ -996,7 +1065,7 @@ function initWatchlist() {
       if (!items.length) return;
       const title = key === 'other' ? 'Other' : (CATEGORIES.find((c) => c.value === key) || {}).plural;
       const row = el('div', { class: 'row' });
-      const cards = items.map(watchlistCard);
+      const cards = items.slice(0, ROW_LIMIT).map(watchlistCard);
       row.append(...cards);
       UI.stagger(cards);
       window.enableDragScroll(row);
@@ -1012,7 +1081,7 @@ function initWatchlist() {
         row
       ));
     });
-    content.replaceChildren(...sections);
+    content.replaceChildren(...(dupes ? [dupes] : []), ...sections);
   }
 
   watchlistState.render = render;
@@ -1033,11 +1102,26 @@ function initWatchlist() {
 
   if (sortSelect) {
     sortSelect.addEventListener('change', () => {
-      watchlistState.sort = sortSelect.value === 'title' ? 'title' : 'added';
+      watchlistState.sort = sortSelect.value === 'title' || sortSelect.value === 'updated' ? sortSelect.value : 'added';
       writePref(SORT_KEY, watchlistState.sort);
       render();
     });
   }
+
+  if (filterInput) {
+    let timer = null;
+    filterInput.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { watchlistState.query = filterInput.value; render(); }, 140);
+    });
+  }
+
+  let renderQueued = false;
+  window.addEventListener('orvion:progress-changed', () => {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => { renderQueued = false; render(); });
+  });
 
   window.addEventListener('orvion:watchlist-changed', () => fetchLibrary(false));
   window.addEventListener('pageshow', (event) => { if (event.persisted) fetchLibrary(false); });
@@ -1116,17 +1200,20 @@ function initConnectivityToasts() {
 // 10. INIT
 // =============================================================================
 function initApp() {
-  initTheme();
+  initAppearance();
   initServiceWorker();
   initInstallPrompt();
   initConnectivityToasts();
 
-  const themeBtn = $('themeToggleBtn');
-  if (themeBtn) themeBtn.addEventListener('click', showThemeSettings);
-
   const page = document.body.classList;
   if (page.contains('home-page')) initHome();
   else if (page.contains('watchlist-page')) initWatchlist();
+  else if (page.contains('discover-page') || page.contains('search-page')) {
+    // Refresh the library snapshot (cheap when it is fresh) so "already in your list" badges are accurate.
+    const warm = () => { getLibraryCached().catch(() => {}); };
+    if ('requestIdleCallback' in window) requestIdleCallback(warm, { timeout: 4000 });
+    else setTimeout(warm, 1500);
+  }
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initApp);
@@ -1134,3 +1221,4 @@ else initApp();
 
 window.showAddModal = showAddModal;
 window.showItemDetails = showItemDetails;
+window.openTracker = openTracker;

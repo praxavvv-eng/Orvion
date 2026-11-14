@@ -272,6 +272,57 @@
   };
 
   // ---------------------------------------------------------------------------
+  // Episode tracker + statistics helpers (new; every function resolves, none throws)
+  // ---------------------------------------------------------------------------
+
+  /** Lightweight TV details (no credits/videos): seasons, status, last/next episode. Resolves to the object or null. */
+  window.fetchTVBasics = async function (id, opts) {
+    try {
+      return await requestJson('/tv/' + encodeURIComponent(String(id)), opts && opts.signal);
+    } catch (err) {
+      if (err.kind !== 'aborted') console.warn('TV basics request failed:', err.kind, err.status || '');
+      return null;
+    }
+  };
+
+  /** One season with its episodes. Resolves to { ok: true, season } or { ok: false, error }. */
+  window.fetchSeason = async function (id, seasonNumber, opts) {
+    try {
+      const data = await requestJson('/tv/' + encodeURIComponent(String(id)) + '/season/' + encodeURIComponent(String(seasonNumber)), opts && opts.signal);
+      if (!data || !Array.isArray(data.episodes)) return { ok: false, error: makeError('invalid-response', 'Unexpected season response.') };
+      return { ok: true, season: data };
+    } catch (err) {
+      if (err.kind !== 'aborted') console.warn('Season request failed:', err.kind, err.status || '');
+      return { ok: false, error: err };
+    }
+  };
+
+  /**
+   * Small metadata record used by Statistics (genres + runtimes). type is "movie" | "tv".
+   * Resolves to { ok: true, data: { genres: [name], runtime, episodes } } or { ok: false, error }.
+   * A 404 resolves as { ok: false, error: { status: 404 } } so callers can stop retrying that title.
+   */
+  window.fetchTitleMeta = async function (type, id, opts) {
+    const kind = type === 'tv' ? 'tv' : 'movie';
+    try {
+      const d = await requestJson('/' + kind + '/' + encodeURIComponent(String(id)), opts && opts.signal);
+      const runtime = kind === 'movie'
+        ? Number(d.runtime) || 0
+        : (Array.isArray(d.episode_run_time) && d.episode_run_time.length ? Number(d.episode_run_time[0]) || 0 : (d.last_episode_to_air && Number(d.last_episode_to_air.runtime)) || 0);
+      return {
+        ok: true,
+        data: {
+          genres: (Array.isArray(d.genres) ? d.genres : []).map((g) => g && g.name).filter(Boolean),
+          runtime: runtime,
+          episodes: kind === 'tv' ? Number(d.number_of_episodes) || 0 : 0
+        }
+      };
+    } catch (err) {
+      return { ok: false, error: err };
+    }
+  };
+
+  // ---------------------------------------------------------------------------
   // Shared exports
   // ---------------------------------------------------------------------------
   window.tmdbImage = tmdbImage;

@@ -1,56 +1,22 @@
-ORVION — STATIC AND MOCKED-INTEGRATION QA REPORT
+ORVION — QA REPORT (upgrade v14)
 
-PROJECT ROOT
-Orvion-main/
+VERIFIED IN A REAL BROWSER (Chromium, with TMDB and Firestore replaced by mocks)
+PASS  Home: hero, Continue watching (2 titles), "S2 · E5 next", quick-check writes progress.watched.2 via field path
+PASS  Watchlist: tab counts, legacy "completed" status counted as Watched, duplicate notice, progress bar, title filter, no-match state
+PASS  Tracker: season switch, episode toggle, unaired locked, Mark all/Clear + Undo, Shift-click "up to here",
+      other seasons untouched by saves, next-episode card, details -> tracker
+PASS  Stats: unique counts (duplicate ignored, most advanced copy kept), episodes tracked, genres, labelled estimate,
+      completion-date coverage disclosed, 12-month chart, 1 Firestore read per visit
+PASS  Appearance: AMOLED (#000 + theme-color), accents, custom colour, glass 0, density, card style, motion None,
+      presets, persistence across reload, legacy orvion-theme/orvion-color honoured
+PASS  Add flow: Japanese animation -> "anime" suggested; new document contains ONLY the original six fields
+PASS  Resilience: TMDB outage shows Retry states; service worker v14 installs, serves cached pages offline, falls back to offline page
+PASS  Reduced motion (OS) => animations off; no horizontal overflow at 360px; light theme; zero console errors in every flow
+PASS  18 unit tests for progress maths, aired-episode estimation, "up to here", cache patching
 
-PROJECT CONTENTS
-- index.html
-- discover.html
-- search.html
-- watchlist.html
-- offline.html
-- css/style.css
-- js/api.js
-- js/app.js
-- js/discover.js
-- js/ui.js
-- js/watchlist.js
-- icons/icon-192.png
-- icons/icon-512.png
-- manifest.json
-- service-worker.js
-- vercel.json
-- UPDATE-NOTES.txt
-- QA-REPORT.txt
-
-CHECKS PERFORMED
-PASS — JavaScript syntax check for all five application modules.
-PASS — JavaScript syntax check for service-worker.js.
-PASS — Inline JavaScript syntax checks for all HTML pages.
-PASS — HTML parsing for all five HTML documents.
-PASS — No duplicate HTML IDs detected within each page.
-PASS — Local script, stylesheet, image, manifest, and icon references resolve within the project.
-PASS — CSS stylesheet and nested rule/declaration parsing.
-PASS — manifest.json parses as valid JSON.
-PASS — vercel.json parses as valid JSON.
-PASS — Manifest icon paths exist; icon dimensions are 192x192 and 512x512.
-PASS — Service-worker precache file references exist.
-PASS — API global functions called by app, Discover, Search, and UI are exported by js/api.js.
-PASS — UI helper methods referenced by pages are exported by js/ui.js.
-PASS — Firebase collection name and existing core watchlist fields match the supplied original project.
-PASS — Mocked TMDB success responses for home lists, Discover lists, search, details, and genres.
-PASS — Mocked TMDB 401 classification and network failure handling.
-PASS — Stale genre cache fallback when the genre endpoint is unavailable.
-
-NOT VERIFIED IN THIS ENVIRONMENT
-- Live TMDB API key validity and actual TMDB responses.
-- Live browser rendering: browser navigation to local test servers is blocked by the execution environment's browser policy.
-- Live Firebase SDK CDN loading and Firestore reads/writes.
-- Actual user watchlist data in the live Firestore project.
-- Vercel deployment and production service-worker update behavior.
-
-IMPORTANT
-A passing syntax/static check does not prove that every live API call or browser interaction works with the user's network, API key, browser extensions, Firebase rules, or deployed environment. The app now reports API failures with visible retry/error states rather than treating every failure as an empty successful response, but live testing is still required before production deployment.
-
-DATA SAFETY
-This package does not include a Firestore migration, collection deletion, mass update, or local data reset. The Firestore collection and watchlist module/schema were retained. The live Firestore security rules are outside this ZIP and therefore could not be inspected.
+NOT VERIFIED (cannot be, from this environment)
+- Your live TMDB key, live Firebase SDK/Firestore, and your Firestore security rules.
+- Real devices (iOS Safari, Android Chrome), real install prompt, swipe gestures on touch hardware.
+- Vercel deployment and the production service-worker update.
+- Episode/aired counts for shows whose TMDB data is unusual; the app falls back to season-level data and shows it by number.
+Test with your real data before deploying.
