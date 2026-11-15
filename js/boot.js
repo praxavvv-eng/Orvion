@@ -14,9 +14,10 @@
     density: 'orvion-density',
     cards: 'orvion-cards',
     glass: 'orvion-glass',
-    motion: 'orvion-motion'
+    motion: 'orvion-motion',
+    nav: 'orvion-nav'
   };
-  var DEFAULTS = { theme: 'dark', color: 'purple', custom: '#7c3aed', density: 'comfortable', cards: 'rounded', glass: '55', motion: 'auto' };
+  var DEFAULTS = { theme: 'dark', color: 'purple', custom: '#7c3aed', density: 'comfortable', cards: 'rounded', glass: '55', motion: 'auto', nav: 'liquid' };
 
   var ACCENTS = [
     { value: 'purple', label: 'Violet', swatch: '#7c3aed' },
@@ -29,19 +30,20 @@
   ];
 
   var PRESETS = [
-    { id: 'orvion', label: 'Orvion', note: 'Violet glass', theme: 'dark', color: 'purple', glass: '55', cards: 'rounded', density: 'comfortable', motion: 'auto', preview: ['#0b0b0f', '#7c3aed'] },
+    { id: 'orvion', label: 'Orvion', note: 'Violet glass', theme: 'dark', color: 'purple', glass: '55', cards: 'rounded', density: 'comfortable', motion: 'auto', preview: ['#0a0a0c', '#7c3aed'] },
     { id: 'noir', label: 'Noir', note: 'True black', theme: 'amoled', color: 'purple', glass: '40', cards: 'rounded', density: 'comfortable', motion: 'auto', preview: ['#000000', '#8b5cf6'] },
     { id: 'ocean', label: 'Ocean', note: 'Deep teal', theme: 'amoled', color: 'teal', glass: '60', cards: 'rounded', density: 'comfortable', motion: 'auto', preview: ['#000000', '#14b8a6'] },
-    { id: 'sunset', label: 'Sunset', note: 'Warm orange', theme: 'dark', color: 'orange', glass: '65', cards: 'rounded', density: 'comfortable', motion: 'auto', preview: ['#0b0b0f', '#f97316'] },
-    { id: 'daylight', label: 'Daylight', note: 'Clean light', theme: 'light', color: 'purple', glass: '55', cards: 'rounded', density: 'comfortable', motion: 'auto', preview: ['#f4f3f8', '#7c3aed'] },
+    { id: 'sunset', label: 'Sunset', note: 'Warm orange', theme: 'dark', color: 'orange', glass: '65', cards: 'rounded', density: 'comfortable', motion: 'auto', preview: ['#0a0a0c', '#f97316'] },
+    { id: 'daylight', label: 'Daylight', note: 'Clean light', theme: 'light', color: 'purple', glass: '55', cards: 'rounded', density: 'comfortable', motion: 'auto', preview: ['#f2f2f7', '#7c3aed'] },
     { id: 'minimal', label: 'Minimal', note: 'Flat and calm', theme: 'amoled', color: 'blue', glass: '15', cards: 'sharp', density: 'compact', motion: 'subtle', preview: ['#000000', '#3b82f6'] }
   ];
 
-  var THEME_COLORS = { dark: '#0b0b0f', light: '#f4f3f8', amoled: '#000000' };
+  var THEME_COLORS = { dark: '#0a0a0c', light: '#f2f2f7', amoled: '#000000' };
   var THEMES = ['dark', 'light', 'system', 'amoled'];
   var DENSITIES = ['comfortable', 'compact'];
   var CARDS = ['rounded', 'classic', 'sharp'];
   var MOTIONS = ['auto', 'full', 'subtle', 'off'];
+  var NAVS = ['native', 'liquid', 'floating', 'cinematic'];
 
   function get(key) {
     try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -59,6 +61,7 @@
     var cards = memory.cards || get(KEYS.cards) || DEFAULTS.cards;
     var glass = memory.glass || get(KEYS.glass) || DEFAULTS.glass;
     var motion = memory.motion || get(KEYS.motion) || DEFAULTS.motion;
+    var nav = memory.nav || get(KEYS.nav) || DEFAULTS.nav;
     glass = Number(glass);
     return {
       theme: THEMES.indexOf(theme) === -1 ? DEFAULTS.theme : theme,
@@ -67,7 +70,8 @@
       density: DENSITIES.indexOf(density) === -1 ? DEFAULTS.density : density,
       cards: CARDS.indexOf(cards) === -1 ? DEFAULTS.cards : cards,
       glass: isFinite(glass) ? Math.max(0, Math.min(100, glass)) : Number(DEFAULTS.glass),
-      motion: MOTIONS.indexOf(motion) === -1 ? DEFAULTS.motion : motion
+      motion: MOTIONS.indexOf(motion) === -1 ? DEFAULTS.motion : motion,
+      nav: NAVS.indexOf(nav) === -1 ? DEFAULTS.nav : nav
     };
   }
 
@@ -101,6 +105,7 @@
     root.setAttribute('data-color', s.color);
     root.setAttribute('data-density', s.density);
     root.setAttribute('data-cards', s.cards);
+    root.setAttribute('data-nav', s.nav);
 
     var motion = s.motion === 'auto' ? (systemReduce && systemReduce.matches ? 'off' : 'full') : s.motion;
     root.setAttribute('data-motion', motion);
@@ -156,7 +161,7 @@
   if (systemReduce && systemReduce.addEventListener) systemReduce.addEventListener('change', onSystemChange);
 
   window.OrvionTheme = {
-    KEYS: KEYS, DEFAULTS: DEFAULTS, ACCENTS: ACCENTS, PRESETS: PRESETS,
+    KEYS: KEYS, DEFAULTS: DEFAULTS, ACCENTS: ACCENTS, PRESETS: PRESETS, NAVS: NAVS,
     read: read, save: save, apply: apply, applyPreset: applyPreset, reset: reset, hexToRgb: hexToRgb
   };
 

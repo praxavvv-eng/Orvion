@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Offline · Orvion</title>
-  <meta name="theme-color" content="#0b0b0f">
+  <meta name="theme-color" content="#0a0a0c">
   <link rel="icon" type="image/svg+xml" href="/icons/logo.svg">
   <link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48.png">
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
-    html { background: #0b0b0f; }
+    html { background: #0a0a0c; }
     body {
       margin: 0;
       min-height: 100vh;
@@ -18,12 +18,9 @@
       display: grid;
       place-items: center;
       padding: calc(env(safe-area-inset-top) + 24px) 24px calc(env(safe-area-inset-bottom) + 24px);
-      font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       color: #f4f3f8;
-      background:
-        radial-gradient(800px 480px at 85% -10%, rgba(124, 58, 237, 0.2), transparent 62%),
-        radial-gradient(640px 460px at -10% 8%, rgba(120, 140, 255, 0.09), transparent 62%),
-        #0b0b0f;
+      background: radial-gradient(800px 480px at 85% -10%, rgba(124, 58, 237, 0.16), transparent 62%), #0a0a0c;
       -webkit-font-smoothing: antialiased;
     }
     main {
@@ -31,9 +28,8 @@
       padding: 36px 28px 30px;
       text-align: center;
       border-radius: 28px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 50%, rgba(255, 255, 255, 0)), rgba(30, 28, 42, 0.55);
-      border: 1px solid rgba(255, 255, 255, 0.11);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 24px 60px -24px rgba(0, 0, 0, 0.8);
+      background: rgba(34, 34, 38, 0.6);
+      box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 24px 60px -24px rgba(0, 0, 0, 0.8);
       -webkit-backdrop-filter: blur(22px) saturate(165%);
       backdrop-filter: blur(22px) saturate(165%);
     }
@@ -65,11 +61,7 @@
     }
     .btn:active { transform: scale(0.97); }
     .btn:focus-visible { outline: 2px solid #a78bfa; outline-offset: 3px; }
-    .primary {
-      color: #fff;
-      background: linear-gradient(180deg, rgba(124, 58, 237, 0.92), #7c3aed);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 26px -12px rgba(124, 58, 237, 0.75);
-    }
+    .primary { color: #0a0a0c; background: #f5f5f7; }
     .secondary { color: #f4f3f8; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.12); }
     @media (prefers-reduced-transparency: reduce) {
       main { -webkit-backdrop-filter: none; backdrop-filter: none; background: #1d1c26; }

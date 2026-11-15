@@ -1,56 +1,42 @@
-ORVION — PREMIUM UPGRADE (v14)
+ORVION v15 — CINEMA REDESIGN (visual + interaction redesign; data layer untouched)
 
-DATA SAFETY (read first)
-- Firebase config, collection name ("watchlist"), document IDs and every existing field are unchanged.
-- No migration, no bulk write, no delete. Old documents work as they are.
-- New OPTIONAL fields are written only when you tap something, and only on that title's existing document:
-    completedAt  (number)  set when a title is moved to Watched. Old entries are NOT back-filled.
-    progress     (map)     episode tracker: watched{season:[eps]}, totals{season:n}, ongoing, last{s,e}, updated
-  Progress is saved with field paths ("progress.watched.2"), so saving Season 2 can never overwrite Season 1.
-- Opening the tracker never writes. Duplicate entries are reported, never deleted.
-- Orvion has NO Firebase Authentication (the original project doesn't use it). All data is in one shared
-  "watchlist" collection protected only by your Firestore rules. Adding auth now would orphan your existing
-  documents, so it was deliberately NOT added. Review your Firestore rules before sharing the site publicly.
+DATA SAFETY
+- NOT touched in this release: js/watchlist.js, js/api.js, js/discover.js, js/search.js, manifest.json, vercel.json, icons/*.
+  Firebase config, collection, document IDs, schema, TMDB integration, saved progress and statistics maths are byte-identical to v14.
+- Only localStorage keys added: "orvion-nav" (navigation style). Existing keys (orvion-theme, orvion-color, ...) are still honoured.
+- Reminder from v14: Orvion has no Firebase Auth; the shared "watchlist" collection is protected only by your Firestore rules. Review them.
 
-NEW / CHANGED FILES (all complete, ready to paste)
-  NEW      js/boot.js            appearance engine, runs before first paint
-  NEW      js/appearance.js      Appearance sheet
-  NEW      js/tracker.js         episode tracker
-  NEW      js/stats.js           statistics dashboard
-  NEW      js/search.js          search logic moved out of search.html (behaviour unchanged)
-  NEW      stats.html
-  NEW      icons/logo.svg, icon-maskable-192.png, icon-maskable-512.png, apple-touch-icon.png, favicon-48.png, og-image.png
-  CHANGED  icons/icon-192.png, icons/icon-512.png   (new logo)
-  CHANGED  css/style.css, js/ui.js, js/api.js, js/watchlist.js, js/app.js
-  CHANGED  index.html, discover.html, search.html, watchlist.html, offline.html
-  CHANGED  manifest.json, service-worker.js (v14), vercel.json
-  UNCHANGED js/discover.js (byte-identical)
+NEW VISUAL SYSTEM
+- Apple-style type (system font stack, no web fonts), charcoal / true-AMOLED surfaces, light "grouped" theme.
+- Restrained accent: used for progress, selection and the active tab only. Primary buttons are inverted (white on dark, black on light).
+- Clean posters: nothing sits on the artwork. Title, rating and one intentional control ("+" / status / "...") live below it;
+  no hover-only actions, no ticks or badges on posters; 2:3 posters, 16:9 backdrop cards for Trending.
 
-FEATURES
-- Redesign: Liquid Glass + true AMOLED black, Inter typography, new orbit logo, swipe-down sheets,
-  smoother motion (spring press/pop, drawn check marks, bars that grow), hero auto-advance, "already in your list" badges.
-- Episode tracker: seasons, per-episode toggle, Mark all/Clear season, "up to here" (long-press or Shift-click),
-  next episode (S2 E6), overall %, specials, unaired episodes locked, Undo, offline fallback from saved totals.
-  Status moves Plan -> Watching on first episode; a prompt offers "Mark as Watched" when a finished series is completed.
-- Continue watching (Home) with one-tap "mark next episode".
-- Statistics: totals, status, category, episodes tracked, activity (completed/added, months/years), genres, estimated
-  watch time, in-progress, recently completed, milestones. Only real data; estimates are labelled.
-- Appearance: Dark / Light / System / AMOLED, 7 accents + custom picker, glass slider, density, card style,
-  animation intensity (Auto/Full/Subtle/None), 6 presets. Old orvion-theme / orvion-color settings are still honoured.
-- Watchlist: title filter, "Recently updated" sort, progress bars, batched rendering for large libraries.
-- Add sheet suggests Anime (Japanese animation) / K-Drama (Korean) / Series / Movie automatically.
+SCREENS (all re-composed, not re-coloured)
+- Home: full-bleed cinematic hero (cross-fade, Ken-Burns drift, staggered title/meta/buttons, timed segment pager,
+  swipe, arrow keys, desktop arrows, pause on hover/focus/touch, off for reduced motion) -> Continue watching (list cards with
+  an explicit check button) -> Your watchlist -> Trending (backdrop cards) -> Popular -> Top rated -> Popular series.
+- Discover / Search / Watchlist: large titles, iOS segmented controls, chip rows, custom dropdown menus (replace native selects),
+  poster grids, batched rendering, title filter.
+- Details: cinematic backdrop sheet, one primary action, Episodes shortcut, trailer, facts list, cast.
+- Episode tracker: progress ring + Watched/Left/Season figures, "Up next" card with a one-tap button, season tiles with mini
+  progress, one grouped episode list with big check targets, Up-next marker, locked unaired episodes, Mark all/Clear, Undo, long-press "up to here".
+- Statistics: same real data, new layout and typography (grouped panels, big numerals).
+- Settings (gear icon): Appearance > Navigation style (live tappable preview), Theme (mode incl. true Black, presets, accent + custom),
+  Display (glass, density, poster corners, animations).
 
-BUGS FIXED / HARDENED
-- offline.html: invalid `font: ... inherit` declaration (button font was ignored).
-- manifest: "any maskable" icons were cropped on Android -> separate any + maskable icons.
-- Logo: tiny, black-backed raster -> vector mark, correct size in header, favicon, install icon, splash.
-- vercel.json: service worker never cached, security headers added.
-- Service worker: navigation preload, network no longer abandoned after the timeout, bounded Firebase cache,
-  Google Fonts cached for offline, new files precached.
-- Firestore reads: Home/Stats/badges share one cached library snapshot (10 min), updated after every write.
-- Large libraries: rows capped at 24 with "See all", grids render in batches.
+NAVIGATION STYLES (Settings > Appearance > Navigation style) — same links/routing, four looks, animated switch, persisted
+  Native (full-width tab bar, top indicator) · Liquid Glass (floating, glass lens indicator) ·
+  Minimal (compact, icons only, dot indicator) · Cinematic (wide glass, active label rises, tinted pill).
+  The container, indicator, labels and spacing morph with CSS transitions; the indicator is re-measured every frame during the morph.
 
-HOW TO DEPLOY
-1. Keep a backup of the live project. Copy these files over it (keep your hidden .git folder).
-2. Run through Live Server / any HTTP server (not file://) and test: Home, Watchlist, tracker, Stats, Appearance.
-3. Commit and push. The service worker (v14) replaces the old cache on the next visit; a "Refresh" toast appears.
+MOTION
+- Page content rises in / fades out between screens (dock and top bar stay), sheets use an iOS-style curve and swipe-down,
+  press feedback on buttons, drawn check marks, growing progress bars, toasts, menus. Settings > Animations: Auto / Full / Subtle / None;
+  Auto follows the device's reduced-motion setting.
+
+FILES CHANGED
+  NEW      js/nav.js
+  REWRITTEN css/style.css, js/appearance.js
+  CHANGED  js/boot.js, js/ui.js, js/app.js, js/tracker.js, js/stats.js (colour token names only)
+  CHANGED  index.html, discover.html, search.html, watchlist.html, stats.html, offline.html, service-worker.js (v15)

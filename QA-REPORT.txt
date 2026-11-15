@@ -1,22 +1,30 @@
-ORVION — QA REPORT (upgrade v14)
+ORVION v15 — QA REPORT
 
-VERIFIED IN A REAL BROWSER (Chromium, with TMDB and Firestore replaced by mocks)
-PASS  Home: hero, Continue watching (2 titles), "S2 · E5 next", quick-check writes progress.watched.2 via field path
-PASS  Watchlist: tab counts, legacy "completed" status counted as Watched, duplicate notice, progress bar, title filter, no-match state
-PASS  Tracker: season switch, episode toggle, unaired locked, Mark all/Clear + Undo, Shift-click "up to here",
-      other seasons untouched by saves, next-episode card, details -> tracker
-PASS  Stats: unique counts (duplicate ignored, most advanced copy kept), episodes tracked, genres, labelled estimate,
-      completion-date coverage disclosed, 12-month chart, 1 Firestore read per visit
-PASS  Appearance: AMOLED (#000 + theme-color), accents, custom colour, glass 0, density, card style, motion None,
-      presets, persistence across reload, legacy orvion-theme/orvion-color honoured
-PASS  Add flow: Japanese animation -> "anime" suggested; new document contains ONLY the original six fields
-PASS  Resilience: TMDB outage shows Retry states; service worker v14 installs, serves cached pages offline, falls back to offline page
-PASS  Reduced motion (OS) => animations off; no horizontal overflow at 360px; light theme; zero console errors in every flow
-PASS  18 unit tests for progress maths, aired-episode estimation, "up to here", cache patching
+TESTED (real Chromium; TMDB and Firestore replaced by in-memory mocks that implement dotted-path updates)
+136 automated checks passed, 0 failed, across 4 suites:
+- Home: hero from TMDB data, Continue watching, one-tap next episode (field-path write), card updates to "Caught up"
+- Hero: 6 slides, auto-advance (~6.5s), cross-fade observed mid-transition, pager jump, swipe left/right, pause on hover and resume,
+  no autoplay under reduced motion
+- Navigation: all 4 styles apply immediately, stay on screen mid-morph, indicator centred on the active tab (< 3px) and inside the bar,
+  labels per style, preview dock is interactive, persists after reload, carries to the next page, items remain plain links
+- Posters: only artwork inside posters, no legacy overlays, action control >= 40px and visible without hover, 2:3 ratio
+- Menus: custom dropdown drives the underlying select
+- Watchlist / tracker: tab counts, legacy "completed", duplicate notice, filter, season switching, toggle, unaired lock, Mark all/Clear/Undo,
+  Shift-click "up to here", other seasons untouched by saves
+- Stats: unique counts, episodes, genres, labelled estimate, completion-date coverage, single Firestore read
+- Settings: AMOLED, accents, custom colour, glass, density, card style, motion, presets, persistence, legacy keys
+- Add flow writes only the original six fields; TMDB outage shows retry states; service worker v15 installs, serves cached pages offline,
+  falls back to the offline page
+- 360px and 390px: no horizontal overflow on Home, Discover, Search, Watchlist, Stats and the details sheet; zero console errors on every page
 
 NOT VERIFIED (cannot be, from this environment)
-- Your live TMDB key, live Firebase SDK/Firestore, and your Firestore security rules.
-- Real devices (iOS Safari, Android Chrome), real install prompt, swipe gestures on touch hardware.
-- Vercel deployment and the production service-worker update.
-- Episode/aired counts for shows whose TMDB data is unusual; the app falls back to season-level data and shows it by number.
-Test with your real data before deploying.
+- Your live TMDB key, live Firebase/Firestore and your Firestore security rules (mocks only)
+- Real phones: iOS Safari / Android Chrome rendering, safe-area insets, backdrop-filter performance on low-end devices,
+  real touch swipe feel, the real install prompt
+- Vercel deployment and production service-worker update
+
+KNOWN LIMITATIONS
+- Backdrops/posters in the screenshots are generated placeholders; real artwork loads from TMDB.
+- Cross-page transitions are a content fade (the dock stays); the browser's cross-document view transitions were dropped because they
+  intermittently threw an abort error in Chromium.
+- Pull-to-refresh, haptics and a native Android build were not part of this pass.

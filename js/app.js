@@ -184,7 +184,6 @@ function renderDetailsLoading() {
   detailsSheet.scroll.replaceChildren(
     el('div', { class: 'details-hero skeleton-block' }),
     el('div', { class: 'details-main' },
-      el('div', { class: 'details-poster' }, el('span', { class: 'card-poster skeleton-block' })),
       el('div', { class: 'details-head' },
         el('h2', { class: 'details-title', text: 'Loading…', attrs: { id: 'detailsTitle' } }),
         el('div', { class: 'skeleton-line short' })
@@ -215,6 +214,11 @@ function renderDetailsError(id, type) {
   );
 }
 
+function formatDate(value) {
+  if (!value) return '';
+  try { return new Date(value + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return value; }
+}
+
 function renderDetails(item, type) {
   const title = UI.titleOf(item);
   const year = UI.yearOf(item);
@@ -222,67 +226,83 @@ function renderDetails(item, type) {
   const runtime = formatRuntime(item.runtime || (Array.isArray(item.episode_run_time) ? item.episode_run_time[0] : 0));
   const seasons = Number(item.number_of_seasons) > 0 ? item.number_of_seasons + (item.number_of_seasons === 1 ? ' season' : ' seasons') : '';
 
-  // Hero backdrop
+  // Cinematic backdrop that fades into the sheet
   const hero = el('div', { class: 'details-hero' });
-  if (item.backdrop_path) {
+  const artwork = item.backdrop_path || item.poster_path;
+  if (artwork) {
     const backdrop = el('img', { class: 'details-backdrop', attrs: { alt: '', decoding: 'async', draggable: 'false' } });
     backdrop.addEventListener('load', () => backdrop.classList.add('loaded'));
     backdrop.addEventListener('error', () => backdrop.remove());
-    backdrop.src = window.tmdbImage(item.backdrop_path, 'w780');
+    backdrop.src = window.tmdbImage(artwork, item.backdrop_path ? 'w780' : 'w500');
+    if (backdrop.complete && backdrop.naturalWidth > 0) backdrop.classList.add('loaded');
     hero.appendChild(backdrop);
   }
   hero.appendChild(el('div', { class: 'details-hero-scrim', attrs: { 'aria-hidden': 'true' } }));
 
-  // Poster
-  const poster = el('div', { class: 'details-poster' }, el('span', { class: 'card-poster' }, UI.posterFallback()));
-  if (item.poster_path) {
-    poster.firstChild.appendChild(UI.posterImage(window.tmdbImage(item.poster_path, 'w342'), title + ' poster', { eager: true }));
-  }
-
-  // Meta line
   const meta = el('p', { class: 'details-meta' });
   if (rating) meta.appendChild(el('span', { class: 'meta-rating' }, icon('star', 14), el('span', { text: rating })));
   [year, UI.typeLabel(type), runtime || seasons].filter(Boolean).forEach((part) => meta.appendChild(el('span', { text: part })));
 
-  // Genres
-  const genres = el('div', { class: 'details-genres' });
-  (Array.isArray(item.genres) ? item.genres : []).forEach((g) => {
-    if (g && g.name) genres.appendChild(el('span', { class: 'genre-tag', text: g.name }));
-  });
+  const head = el('div', { class: 'details-head' }, el('h2', { class: 'details-title', text: title, attrs: { id: 'detailsTitle' } }));
+  if (item.tagline) head.appendChild(el('p', { class: 'details-tagline', text: item.tagline }));
+  head.appendChild(meta);
 
-  // Actions
+  // Actions: one clear primary, one secondary, trailer as an icon
   const addBtn = el('button', { class: 'btn btn-primary', attrs: { type: 'button', id: 'detailsAddBtn' } },
     icon('plus', 18), el('span', { class: 'btn-label', text: 'Add to watchlist' }));
   addBtn.addEventListener('click', () => {
     showAddModal({ id: item.id, title: title, poster: UI.storedPoster(item), type: type, category: UI.suggestCategory(type, item.original_language, item.genres) });
   });
-  const trackBtn = el('button', { class: 'btn btn-glass', attrs: { type: 'button', id: 'detailsTrackBtn', hidden: true } }, icon('layers', 18), 'Track episodes');
+  const trackBtn = el('button', { class: 'btn btn-glass', attrs: { type: 'button', id: 'detailsTrackBtn', hidden: true } }, icon('layers', 18), 'Episodes');
   const actions = el('div', { class: 'details-actions' }, addBtn, trackBtn);
 
   const videos = item.videos && Array.isArray(item.videos.results) ? item.videos.results : [];
   const trailer = videos.find((v) => v && v.type === 'Trailer' && v.site === 'YouTube' && /^[\w-]{6,20}$/.test(v.key || ''));
   if (trailer) {
     actions.appendChild(el('a', {
-      class: 'btn btn-glass',
-      attrs: { href: 'https://www.youtube.com/watch?v=' + trailer.key, target: '_blank', rel: 'noopener noreferrer' }
-    }, icon('play', 18), 'Trailer'));
+      class: 'btn btn-glass btn-circle',
+      attrs: { href: 'https://www.youtube.com/watch?v=' + trailer.key, target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Watch trailer' }
+    }, icon('play', 20)));
   }
 
-  const head = el('div', { class: 'details-head' },
-    el('h2', { class: 'details-title', text: title, attrs: { id: 'detailsTitle' } })
-  );
-  if (item.tagline) head.appendChild(el('p', { class: 'details-tagline', text: item.tagline }));
-  head.append(meta, genres);
+  const body = el('div', { class: 'details-body' }, el('div', { class: 'details-status', attrs: { 'aria-live': 'polite' } }));
+  const overviewText = item.overview || 'No overview available.';
+  const overview = el('p', { class: 'details-overview', text: overviewText });
+  body.appendChild(overview);
+  if (overviewText.length > 240) {
+    overview.classList.add('clamped');
+    const more = el('button', { class: 'link-btn details-more', text: 'More', attrs: { type: 'button', 'aria-expanded': 'false' } });
+    more.addEventListener('click', () => {
+      const open = overview.classList.toggle('clamped') === false;
+      more.textContent = open ? 'Less' : 'More';
+      more.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    body.appendChild(more);
+  }
 
-  const body = el('div', { class: 'details-body' },
-    el('div', { class: 'details-status', attrs: { 'aria-live': 'polite' } }),
-    actions,
-    el('h3', { class: 'details-heading', text: 'Overview' }),
-    el('p', { class: 'details-overview', text: item.overview || 'No overview available.' })
-  );
+  const genres = (Array.isArray(item.genres) ? item.genres : []).filter((g) => g && g.name);
+  if (genres.length) {
+    const row = el('div', { class: 'details-genres' });
+    genres.forEach((g) => row.appendChild(el('span', { class: 'genre-tag', text: g.name })));
+    body.appendChild(row);
+  }
 
-  // Cast
-  const cast = (item.credits && Array.isArray(item.credits.cast) ? item.credits.cast : []).filter((a) => a && a.name).slice(0, 10);
+  // Facts: an inset list, not a table
+  const facts = [];
+  if (type === 'tv') {
+    facts.push(['Status', item.status], ['Seasons', item.number_of_seasons], ['Episodes', item.number_of_episodes], ['First aired', formatDate(item.first_air_date)]);
+  } else {
+    facts.push(['Released', formatDate(item.release_date)], ['Runtime', formatRuntime(item.runtime)], ['Status', item.status]);
+  }
+  if (item.original_language) facts.push(['Language', String(item.original_language).toUpperCase()]);
+  const shown = facts.filter(([, v]) => v !== undefined && v !== null && v !== '' && v !== 0);
+  if (shown.length) {
+    const list = el('dl', { class: 'facts' });
+    shown.forEach(([k, v]) => list.appendChild(el('div', { class: 'fact' }, el('dt', { text: k }), el('dd', { text: String(v) }))));
+    body.append(el('h3', { class: 'details-heading', text: 'Information' }), list);
+  }
+
+  const cast = (item.credits && Array.isArray(item.credits.cast) ? item.credits.cast : []).filter((a) => a && a.name).slice(0, 12);
   if (cast.length) {
     const row = el('ul', { class: 'cast-row' });
     cast.forEach((actor) => {
@@ -302,7 +322,7 @@ function renderDetails(item, type) {
     body.append(el('h3', { class: 'details-heading', text: 'Cast' }), row);
   }
 
-  detailsSheet.scroll.replaceChildren(hero, el('div', { class: 'details-main' }, poster, head, body));
+  detailsSheet.scroll.replaceChildren(hero, el('div', { class: 'details-main' }, head, actions, body));
   detailsSheet.scroll.scrollTop = 0;
 }
 
@@ -474,7 +494,7 @@ function showManageSheet(entry) {
 // =============================================================================
 const CACHE_TTL = 60 * 60 * 1000;
 const HOME_SECTIONS = [
-  { key: 'trending', rowId: 'trendingScroll', label: 'Trending', type: 'movie', fetch: () => window.fetchTrending() },
+  { key: 'trending', rowId: 'trendingScroll', label: 'Trending', type: 'movie', wide: true, fetch: () => window.fetchTrending() },
   { key: 'popular', rowId: 'popularScroll', label: 'Popular', type: 'movie', fetch: () => window.fetchPopular() },
   { key: 'topRated', rowId: 'topRatedScroll', label: 'Top Rated', type: 'movie', fetch: () => window.fetchTopRated() },
   { key: 'tvPopular', rowId: 'tvScroll', label: 'Popular TV', type: 'tv', fetch: () => window.fetchTVPopular() }
@@ -567,7 +587,7 @@ async function loadHomeSection(section, force) {
       return items;
     }
 
-    const cards = items.map((item) => window.createSmallCard(item, section.type));
+    const cards = items.map((item) => window.createSmallCard(item, section.type, { wide: !!section.wide }));
     row.replaceChildren(...cards);
     UI.stagger(cards);
     row.dispatchEvent(new Event('scroll'));
@@ -589,75 +609,119 @@ async function loadHomeSection(section, force) {
   }
 }
 
-let heroObserver = null;
-let heroTimer = null;
-let heroPausedUntil = 0;
+const HERO_MS = 6500;
+let heroCtl = null;
 
-function startHeroAutoplay(track, count) {
-  clearInterval(heroTimer);
-  if (count < 2 || UI.reducedMotion()) return;
-  const pause = () => { heroPausedUntil = Date.now() + 12000; };
-  ['pointerdown', 'touchstart', 'wheel', 'focusin', 'keydown'].forEach((evt) => track.addEventListener(evt, pause, { passive: true }));
-  heroTimer = setInterval(() => {
-    if (document.hidden || Date.now() < heroPausedUntil || !track.isConnected) return;
-    const index = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
-    track.scrollTo({ left: track.clientWidth * ((index + 1) % count), behavior: 'smooth' });
-  }, 7000);
-}
-
+/** Cinematic hero: stacked slides, cross-fade, timed progress pager, swipe, hover/focus pause, reduced-motion safe. */
 function renderHero(items) {
   const hero = $('hero');
   const track = $('heroTrack');
-  const dots = $('heroDots');
-  if (!hero || !track || !dots) return;
+  const pager = $('heroDots');
+  if (!hero || !track || !pager) return;
 
   const slides = (items || []).filter((item) => item && item.id && item.backdrop_path).slice(0, 6);
   if (!slides.length) { hero.hidden = true; document.body.classList.add('no-hero'); return; }
   hero.hidden = false;
   document.body.classList.remove('no-hero');
+  if (heroCtl) heroCtl.destroy();
 
-  if (heroObserver) heroObserver.disconnect();
   track.replaceChildren();
-  dots.replaceChildren();
+  pager.replaceChildren();
+  hero.querySelectorAll('.hero-arrows').forEach((n) => n.remove());
 
-  const slideNodes = slides.map((item, index) => {
+  const count = slides.length;
+  const nodes = slides.map((item, i) => {
     const node = window.createHeroSlide(item, {
       type: 'movie',
-      eager: index === 0,
+      eager: i < 2,
       eyebrow: 'Trending this week',
-      label: (index + 1) + ' of ' + slides.length + ': ' + UI.titleOf(item)
+      label: (i + 1) + ' of ' + count + ': ' + UI.titleOf(item)
     });
     track.appendChild(node);
     return node;
   });
-
-  const dotNodes = slides.map((item, index) => {
-    const dot = el('button', {
-      class: 'hero-dot' + (index === 0 ? ' active' : ''),
-      attrs: { type: 'button', 'aria-label': 'Show featured title ' + (index + 1) + ' of ' + slides.length },
-      on: { click: () => track.scrollTo({ left: track.clientWidth * index, behavior: UI.reducedMotion() ? 'auto' : 'smooth' }) }
-    });
-    if (index === 0) dot.setAttribute('aria-current', 'true');
-    dots.appendChild(dot);
+  const dots = slides.map((item, i) => {
+    const dot = el('button', { class: 'hero-dot', attrs: { type: 'button', 'aria-label': 'Show featured title ' + (i + 1) + ' of ' + count } }, document.createElement('i'));
+    dot.addEventListener('click', () => go(i));
+    pager.appendChild(dot);
     return dot;
   });
 
-  if ('IntersectionObserver' in window) {
-    heroObserver = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        const index = slideNodes.indexOf(entry.target);
-        slideNodes.forEach((node, i) => node.classList.toggle('is-active', i === index));
-        dotNodes.forEach((dot, i) => {
-          dot.classList.toggle('active', i === index);
-          if (i === index) dot.setAttribute('aria-current', 'true');
-          else dot.removeAttribute('aria-current');
-        });
-      });
-    }, { root: track, threshold: 0.6 });
-    slideNodes.forEach((node) => heroObserver.observe(node));
+  const autoplay = count > 1 && !UI.reducedMotion();
+  hero.style.setProperty('--hero-ms', HERO_MS + 'ms');
+  hero.classList.toggle('is-playing', autoplay);
+  hero.classList.remove('is-paused');
+  let index = -1;
+  let holdTimer = null;
+  const cleanups = [];
+  const on = (target, evt, fn, opts) => { target.addEventListener(evt, fn, opts); cleanups.push(() => target.removeEventListener(evt, fn, opts)); };
+
+  function show(i) {
+    const next = (i + count) % count;
+    if (next === index) return;
+    index = next;
+    nodes.forEach((node, n) => {
+      node.classList.toggle('is-active', n === index);
+      node.setAttribute('aria-hidden', n === index ? 'false' : 'true');
+      node.inert = n !== index;
+    });
+    dots.forEach((dot, n) => {
+      dot.classList.toggle('active', n === index);
+      if (n === index) dot.setAttribute('aria-current', 'true'); else dot.removeAttribute('aria-current');
+    });
+    // Warm the next slide's artwork so the cross-fade never reveals an empty frame.
+    const upcoming = nodes[(index + 1) % count].querySelector('img');
+    if (upcoming) upcoming.loading = 'eager';
   }
-  startHeroAutoplay(track, slideNodes.length);
+  function go(i) { show(i); }
+
+  // Advance when the active pager segment finishes filling (pausing the animation pauses the carousel).
+  on(pager, 'animationend', (e) => { if (e.animationName === 'heroFill') show(index + 1); });
+
+  let hovering = false;
+  const hold = () => { clearTimeout(holdTimer); hero.classList.add('is-paused'); };
+  const release = (delay) => {
+    clearTimeout(holdTimer);
+    if (hovering) return; // a mouse resting on the hero keeps it paused until it leaves
+    holdTimer = setTimeout(() => hero.classList.remove('is-paused'), delay || 0);
+  };
+  on(hero, 'pointerenter', (e) => { if (e.pointerType === 'mouse') { hovering = true; hold(); } });
+  on(hero, 'pointerleave', (e) => { if (e.pointerType === 'mouse') { hovering = false; release(0); } });
+  on(hero, 'focusin', hold);
+  on(hero, 'focusout', () => release(0));
+  on(document, 'visibilitychange', () => { if (document.hidden) hold(); else release(0); });
+
+  // Swipe (touch/pen/mouse drag). Vertical scrolling stays native (touch-action: pan-y on the stage).
+  const stage = hero.querySelector('.hero-stage');
+  let sx = 0;
+  let sy = 0;
+  let tracking = false;
+  on(stage, 'pointerdown', (e) => { if (e.pointerType === 'mouse' && e.button !== 0) return; sx = e.clientX; sy = e.clientY; tracking = true; hold(); });
+  const finish = (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const dx = e.clientX - sx;
+    const dy = e.clientY - sy;
+    if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy) * 1.3) show(index + (dx < 0 ? 1 : -1));
+    release(e.pointerType === 'mouse' ? 0 : 1800);
+  };
+  on(stage, 'pointerup', finish);
+  on(stage, 'pointercancel', () => { tracking = false; release(1200); });
+  on(hero, 'keydown', (e) => {
+    if (e.key === 'ArrowRight') { e.preventDefault(); show(index + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); show(index - 1); }
+  });
+
+  if (count > 1) {
+    const arrows = el('div', { class: 'hero-arrows' },
+      el('button', { class: 'hero-arrow', attrs: { type: 'button', 'aria-label': 'Previous featured title' }, on: { click: () => show(index - 1) } }, icon('chevL', 20)),
+      el('button', { class: 'hero-arrow', attrs: { type: 'button', 'aria-label': 'Next featured title' }, on: { click: () => show(index + 1) } }, icon('chevR', 20))
+    );
+    hero.appendChild(arrows);
+  }
+
+  show(0);
+  heroCtl = { destroy: () => { clearTimeout(holdTimer); cleanups.forEach((fn) => fn()); heroCtl = null; } };
 }
 
 /** Desktop previous/next buttons for horizontal rows (hidden on touch via CSS). */
@@ -700,17 +764,20 @@ async function initHome() {
     console.warn('Home row controls could not be initialized:', error);
   }
 
-  void initContinueWatching();
+  void initLibrarySections();
 
-  // Each section handles its own failure; one broken endpoint must not block the others.
-  const results = await Promise.all(HOME_SECTIONS.map((section) => loadHomeSection(section, false)));
-  const trending = results[0];
+  // Trending feeds both the hero and its row, so it goes first and the hero appears as soon as it resolves.
+  const [trendingSection, ...others] = HOME_SECTIONS;
+  const trendingPromise = loadHomeSection(trendingSection, false);
+  const restPromise = Promise.all(others.map((section) => loadHomeSection(section, false)));
+  const trending = await trendingPromise;
   if (Array.isArray(trending) && trending.length) renderHero(trending);
   else {
     const hero = $('hero');
     if (hero) hero.hidden = true;
     document.body.classList.add('no-hero');
   }
+  await restPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -728,57 +795,84 @@ function nextLabel(summary) {
 function continueCard(entry, rerender) {
   const summary = progressSummary(entry);
   const type = entry.category === 'movie' ? 'movie' : 'tv';
-  return window.createWatchlistCard(entry, {
-    status: 'watching',
-    statusLabel: statusLabel('watching'),
-    categoryLabel: categoryLabel(entry.category),
-    subText: nextLabel(summary) || (summary && summary.completed ? 'Caught up' : categoryLabel(entry.category)),
-    subAccent: !!(summary && summary.next),
-    progress: summary && summary.total ? { pct: summary.pct, done: summary.completed } : null,
-    quick: summary && summary.next ? {
-      label: 'Mark S' + summary.next.s + ' E' + summary.next.e + ' watched',
-      onClick: async () => {
-        const result = markNextEpisode(entry);
-        if (!result) return;
-        UI.showToast('Marked S' + result.marked.s + ' · E' + result.marked.e + ' watched', 'success');
-        rerender();
-      }
-    } : null,
+  const hasNext = !!(summary && summary.next);
+  return window.createContinueCard(entry, {
+    next: hasNext ? 'Next · S' + summary.next.s + ' E' + summary.next.e : (summary && summary.completed ? 'Caught up' : ''),
+    meta: summary && summary.total ? summary.watched + ' of ' + summary.total + ' episodes · ' + categoryLabel(entry.category) : categoryLabel(entry.category),
+    pct: summary && summary.total ? summary.pct : undefined,
+    done: !!(summary && summary.completed),
+    actLabel: hasNext ? 'Mark S' + summary.next.s + ' E' + summary.next.e + ' watched' : undefined,
+    onAct: hasNext ? async () => {
+      const result = markNextEpisode(entry);
+      if (!result) return;
+      UI.showToast('Marked S' + result.marked.s + ' · E' + result.marked.e + ' watched', 'success');
+      rerender();
+    } : undefined,
     onOpen: () => { if (canTrack(entry)) openTracker(entry); else showItemDetails(entry.id, type); }
   });
 }
 
-async function initContinueWatching() {
-  const section = $('cwSection');
-  const row = $('cwScroll');
-  if (!section || !row) return;
+/** Home sections built from the library snapshot: Continue watching + your own Plan-to-watch list. */
+async function initLibrarySections() {
+  const cwSection = $('cwSection');
+  const cwRow = $('cwScroll');
+  const listSection = $('myListSection');
+  const listRow = $('myListScroll');
+  if (!cwSection && !listSection) return;
   let entries = [];
 
   const render = () => {
-    const list = entries
-      .filter((e) => normalizeStatus(e.status) === 'watching')
-      .sort((a, b) => updatedAt(b) - updatedAt(a))
-      .slice(0, 14);
-    section.hidden = !list.length;
-    if (!list.length) return;
-    const badge = section.querySelector('.count-badge');
-    if (badge) badge.textContent = String(list.length);
-    const cards = list.map((entry) => continueCard(entry, render));
-    row.replaceChildren(...cards);
-    UI.stagger(cards);
+    if (cwSection && cwRow) {
+      const watching = entries
+        .filter((e) => normalizeStatus(e.status) === 'watching')
+        .sort((a, b) => updatedAt(b) - updatedAt(a))
+        .slice(0, 12);
+      cwSection.hidden = !watching.length;
+      if (watching.length) {
+        const badge = cwSection.querySelector('.count-badge');
+        if (badge) badge.textContent = String(watching.length);
+        const cards = watching.map((entry) => continueCard(entry, render));
+        cwRow.replaceChildren(...cards);
+        UI.stagger(cards);
+      }
+    }
+    if (listSection && listRow) {
+      const plan = entries.filter((e) => normalizeStatus(e.status) === 'plan').sort((a, b) => (Number(b.added) || 0) - (Number(a.added) || 0)).slice(0, 14);
+      listSection.hidden = !plan.length;
+      if (plan.length) {
+        const cards = plan.map((entry) => window.createWatchlistCard(entry, {
+          status: 'plan',
+          statusLabel: statusLabel('plan'),
+          categoryLabel: categoryLabel(entry.category),
+          subText: categoryLabel(entry.category),
+          onOpen: () => showItemDetails(entry.id, entry.category === 'movie' ? 'movie' : 'tv'),
+          onManage: showManageSheet
+        }));
+        listRow.replaceChildren(...cards);
+        UI.stagger(cards);
+      }
+    }
   };
 
   const result = await getLibraryCached();
-  if (!result.success) return; // Continue watching is optional; Home must not show an error for it
+  if (!result.success) return; // optional sections: Home must not show an error for them
   entries = result.items;
-  window.enableDragScroll(row);
+  if (cwRow) window.enableDragScroll(cwRow);
+  if (listRow) window.enableDragScroll(listRow);
   render();
 
+  // Progress changes mutate the entry objects held here, so a plain re-render is enough (and never shows stale data).
   let queued = false;
   window.addEventListener('orvion:progress-changed', () => {
     if (queued) return;
     queued = true;
     requestAnimationFrame(() => { queued = false; render(); });
+  });
+  // Adds / removes / status changes: re-read the (patched) library snapshot.
+  window.addEventListener('orvion:watchlist-changed', async () => {
+    const fresh = await getLibraryCached({ maxAge: Infinity });
+    if (fresh.success) entries = fresh.items;
+    render();
   });
 }
 
@@ -855,7 +949,7 @@ function watchlistCard(entry) {
   const hasProgress = !!(summary && summary.total);
   let subText = addedText(entry);
   let subAccent = false;
-  if (hasProgress && summary.next && status !== 'watched') { subText = nextLabel(summary); subAccent = true; }
+  if (hasProgress && summary.next && status !== 'watched') { subText = 'Next · S' + summary.next.s + ' E' + summary.next.e; subAccent = true; }
   else if (hasProgress && summary.completed) subText = 'Completed · ' + summary.total + ' eps';
   else if (hasProgress) subText = summary.watched + ' / ' + summary.total + ' eps';
 
@@ -866,13 +960,6 @@ function watchlistCard(entry) {
     subText: subText,
     subAccent: subAccent,
     progress: hasProgress ? { pct: summary.pct, done: summary.completed } : null,
-    quick: status === 'watching' && summary && summary.next ? {
-      label: 'Mark ' + nextLabel(summary).replace(' next', '') + ' watched',
-      onClick: async () => {
-        const result = markNextEpisode(entry);
-        if (result) UI.showToast('Marked S' + result.marked.s + ' · E' + result.marked.e + ' watched', 'success');
-      }
-    } : null,
     onOpen: () => {
       if (status === 'watching' && canTrack(entry)) openTracker(entry);
       else showItemDetails(entry.id, type);
@@ -1204,6 +1291,7 @@ function initApp() {
   initServiceWorker();
   initInstallPrompt();
   initConnectivityToasts();
+  document.querySelectorAll('select.select-pill').forEach((select) => UI.enhanceSelect(select));
 
   const page = document.body.classList;
   if (page.contains('home-page')) initHome();

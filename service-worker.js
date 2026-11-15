@@ -15,7 +15,7 @@
 // Bump VERSION on every deploy that changes the precached files. On activation only Cache Storage
 // entries whose names start with "orvion-" and belong to an older version are removed. localStorage,
 // IndexedDB and Firestore data are never touched by this file.
-const VERSION = 'v14';
+const VERSION = 'v15';
 const STATIC_CACHE = 'orvion-static-' + VERSION;
 const RUNTIME_CACHE = 'orvion-runtime-' + VERSION;
 const IMAGE_CACHE = 'orvion-images-' + VERSION;
@@ -34,6 +34,7 @@ const PRECACHE_URLS = [
   OFFLINE_URL,
   '/css/style.css',
   '/js/boot.js',
+  '/js/nav.js',
   '/js/api.js',
   '/js/ui.js',
   '/js/app.js',

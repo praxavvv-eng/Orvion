@@ -216,22 +216,22 @@ function ensureSheet() {
   if (refs) return refs;
   const { root, sheet } = UI.createSheetRoot('trackerModal', 'trackerTitle', 'tracker');
   const closeBtn = el('button', {
-    class: 'tracker-close icon-btn glass',
+    class: 'tracker-close icon-btn',
     attrs: { type: 'button', 'aria-label': 'Close episode tracker' },
     on: { click: () => closeModal(root) }
   }, icon('close', 20));
 
+  const backdrop = el('div', { class: 'tracker-backdrop', attrs: { 'aria-hidden': 'true' } });
   const posterBox = el('div', { class: 'tracker-poster' });
   const title = el('h2', { class: 'tracker-title', attrs: { id: 'trackerTitle' } });
   const meta = el('p', { class: 'tracker-meta' });
   const save = el('p', { class: 'tracker-save', attrs: { role: 'status', 'aria-live': 'polite' } });
-  const ring = UI.ring(0, 56);
-  const top = el('div', { class: 'tracker-top' }, posterBox, el('div', { style: 'min-width:0' }, title, meta, save), ring.node);
+  const top = el('div', { class: 'tracker-top' }, backdrop, el('div', { class: 'tracker-head' }, posterBox, el('div', { style: 'min-width:0' }, title, meta, save)));
   const body = el('div', { class: 'tracker-scroll' });
   sheet.append(closeBtn, top, body);
 
   listeners.add((state) => { save.dataset.state = state === 'idle' ? '' : state; });
-  refs = { root, sheet, posterBox, title, meta, ring, body, save };
+  refs = { root, sheet, posterBox, title, meta, body, save, backdrop };
   return refs;
 }
 
@@ -276,17 +276,16 @@ function renderTop() {
   const summary = summaryNow();
   const entry = ctx.entry;
   r.title.textContent = entry.title || 'Untitled';
-  const parts = [];
-  if (summary && summary.total) parts.push(summary.watched + ' of ' + summary.total + ' episodes');
-  parts.push(statusLabel(entry.status));
+  const parts = [statusLabel(entry.status)];
   if (ctx.seasons.length) parts.push(ctx.ongoing ? 'Ongoing' : 'Finished');
+  if (summary && summary.total) parts.push(summary.watched + ' of ' + summary.total + ' episodes');
   r.meta.textContent = parts.join(' · ');
-  r.ring.set(summary ? summary.pct : 0, !!(summary && summary.completed));
 }
 
 function renderPoster() {
   const r = refs;
   r.posterBox.replaceChildren();
+  r.backdrop.replaceChildren();
   const poster = typeof ctx.entry.poster === 'string' && /^https:\/\//i.test(ctx.entry.poster) ? ctx.entry.poster.replace('/t/p/w500/', '/t/p/w185/') : '';
   if (poster) {
     const img = el('img', { attrs: { alt: '', decoding: 'async', draggable: 'false' } });
@@ -294,6 +293,31 @@ function renderPoster() {
     img.src = poster;
     r.posterBox.appendChild(img);
   }
+}
+
+function setBackdrop(path) {
+  if (!path || !refs) return;
+  const img = el('img', { attrs: { alt: '', decoding: 'async', draggable: 'false' } });
+  img.addEventListener('load', () => img.classList.add('loaded'));
+  img.addEventListener('error', () => img.remove());
+  img.src = window.tmdbImage(path, 'w780');
+  refs.backdrop.replaceChildren(img);
+}
+
+// ----- summary: ring + three figures that answer "how far am I?" at a glance -----
+function renderSummary() {
+  const summary = summaryNow();
+  const done = !!(summary && summary.completed);
+  nodes.ring.set(summary ? summary.pct : 0, done);
+  const watched = summary ? summary.watched : 0;
+  const left = summary ? Math.max(0, summary.total - summary.watched) : 0;
+  const info = seasonInfo(ctx.season);
+  const seasonAired = info ? (info.number === 0 ? ctx.episodes.length : info.aired) : 0;
+  const seasonDone = info ? watchedOf(ctx.season).filter((n) => info.number === 0 || n <= seasonAired).length : 0;
+  nodes.figs.watched.textContent = String(watched);
+  nodes.figs.left.textContent = String(left);
+  nodes.figs.season.textContent = seasonDone + '/' + seasonAired;
+  nodes.figs.seasonLabel.textContent = info && info.number === 0 ? 'Specials' : 'Season ' + ctx.season;
 }
 
 // ----- next card -----
@@ -318,7 +342,8 @@ function renderNext(container) {
     container.append(
       el('div', { class: 'tracker-next-text' },
         el('div', { class: 'tracker-next-eyebrow', text: summary.watched ? 'Up next' : 'Start with' }),
-        el('div', { class: 'tracker-next-title', text: 'S' + next.s + ' · E' + next.e + (name ? ' · ' + name : '') })
+        el('div', { class: 'tracker-next-title', text: 'S' + next.s + ' · E' + next.e }),
+        name ? el('div', { class: 'tracker-next-sub', text: name }) : null
       ),
       el('button', { class: 'btn btn-primary', attrs: { type: 'button' }, on: { click: () => markEpisode(next.s, next.e, true) } }, icon('check', 18), 'Watched')
     );
@@ -327,28 +352,31 @@ function renderNext(container) {
     container.append(
       el('div', { class: 'tracker-next-text' },
         el('div', { class: 'tracker-next-eyebrow', text: summary.completed ? 'All caught up' : 'Nothing aired yet' }),
-        el('div', { class: 'tracker-next-title', text: summary.completed ? (ctx.ongoing ? 'New episodes will appear here' : 'You’ve watched every episode') : 'Come back when an episode airs' })
+        el('div', { class: 'tracker-next-title', text: summary.completed ? (ctx.ongoing ? 'Waiting for new episodes' : 'Series complete') : 'Check back soon' })
       ),
-      icon(summary.completed ? 'check' : 'clock', 26)
+      icon(summary.completed ? 'check' : 'clock', 30)
     );
   }
 }
 
-// ----- season tabs -----
+// ----- season tiles -----
 function renderTabs(container) {
   container.replaceChildren();
   ctx.seasons.forEach((s) => {
-    const done = watchedOf(s.number).filter((n) => n <= Math.max(s.aired, 0)).length;
-    const complete = s.number > 0 && s.aired > 0 && done >= s.aired;
+    const done = watchedOf(s.number).filter((n) => s.number === 0 || n <= Math.max(s.aired, 0)).length;
+    const aired = s.number === 0 ? 0 : s.aired;
+    const complete = s.number > 0 && aired > 0 && done >= aired;
     const active = s.number === ctx.season;
-    container.appendChild(el('button', {
-      class: 'chip' + (active ? ' active' : '') + (complete ? ' complete' : ''),
-      attrs: { type: 'button', 'aria-pressed': active ? 'true' : 'false', 'aria-label': s.name + (complete ? ' (completed)' : '') },
+    const name = el('span', { class: 'st-name' }, el('span', { text: seasonLabel(s) }), complete ? icon('check', 14) : null);
+    const tile = el('button', {
+      class: 'season-tile',
+      attrs: { type: 'button', 'aria-pressed': active ? 'true' : 'false', 'aria-label': s.name + (aired ? ', ' + done + ' of ' + aired + ' watched' : '') + (complete ? ', completed' : '') },
       on: { click: () => selectSeason(s.number) }
-    }, seasonLabel(s)));
+    }, name, UI.progressBar(aired ? Math.round((done / aired) * 100) : 0, { done: complete }));
+    container.appendChild(tile);
   });
-  const activeChip = container.querySelector('.chip.active');
-  if (activeChip) activeChip.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' });
+  const activeTile = container.querySelector('.season-tile[aria-pressed="true"]');
+  if (activeTile) activeTile.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' });
 }
 
 // ----- season panel -----
@@ -362,9 +390,14 @@ function updateRows() {
   const next = summary && summary.next;
   ctx.rows.forEach((row, number) => {
     const on = watched.has(number);
+    const isNext = !!(next && next.s === ctx.season && next.e === number);
     row.classList.toggle('watched', on);
-    row.classList.toggle('next', !!(next && next.s === ctx.season && next.e === number));
+    row.classList.toggle('next', isNext);
     row.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const meta = row.querySelector('.ep-meta');
+    const tag = meta && meta.querySelector('.ep-tag');
+    if (meta && isNext && !tag) meta.prepend(el('span', { class: 'ep-tag', text: 'Up next' }));
+    else if (tag && !isNext) tag.remove();
   });
 }
 
@@ -378,21 +411,20 @@ function renderSeasonHeader(container) {
   const pct = aired ? Math.round((done / aired) * 100) : 0;
 
   const sub = [done + ' of ' + aired + ' watched'];
-  if (info.number > 0 && info.count > info.aired) sub.push((info.count - info.aired) + ' not aired yet');
+  if (aired > done) sub.push((aired - done) + ' left');
+  if (info.number > 0 && info.count > info.aired) sub.push((info.count - info.aired) + ' not aired');
 
   const action = el('button', {
     class: 'btn btn-glass',
     attrs: { type: 'button' },
     on: { click: () => markSeason(ctx.season, !complete) }
-  }, icon(complete ? 'undo' : 'check', 18), complete ? 'Clear' : 'Mark all');
-  action.style.minHeight = '40px';
-  action.style.padding = '0 16px';
+  }, icon(complete ? 'undo' : 'check', 16), complete ? 'Clear' : 'Mark all');
   if (!aired) action.disabled = true;
 
   container.append(
     el('div', { class: 'season-head' },
       el('div', { class: 'season-info' }, el('div', { class: 'season-name', text: info.name }), el('div', { class: 'season-sub', text: sub.join(' · ') })),
-      action
+      el('div', { class: 'season-actions' }, action)
     ),
     el('div', { class: 'season-progress' }, UI.progressBar(pct, { done: complete }))
   );
@@ -414,7 +446,7 @@ function buildRow(ep) {
   },
     el('span', { class: 'ep-num', text: String(number) }),
     el('span', { class: 'ep-text' }, el('span', { class: 'ep-title', text: name, attrs: { style: 'display:block' } }), el('span', { class: 'ep-meta', text: metaBits.join(' · '), attrs: { style: 'display:block' } })),
-    el('span', { class: 'ep-check', attrs: { 'aria-hidden': 'true' } }, icon('check', 18))
+    el('span', { class: 'ep-check', attrs: { 'aria-hidden': 'true' } }, el('span', {}, icon(aired ? 'check' : 'lock', aired ? 16 : 14)))
   );
 
   const activate = (event) => {
@@ -436,6 +468,7 @@ let nodes = null;
 function paintAll() {
   if (!nodes) return;
   renderTop();
+  renderSummary();
   renderNext(nodes.next);
   renderTabs(nodes.tabs);
   renderSeasonHeader(nodes.seasonHead);
@@ -603,14 +636,24 @@ function markUpTo(season, episode) {
 // Open
 // ---------------------------------------------------------------------------
 function renderBodyShell() {
+  const ring = UI.ring(0, 96);
+  const fig = (label) => {
+    const value = el('div', { class: 'fig-value', text: '0' });
+    const caption = el('div', { class: 'fig-label', text: label });
+    return { node: el('div', { class: 'fig' }, value, caption), value, caption };
+  };
+  const watched = fig('Watched');
+  const left = fig('Left');
+  const season = fig('Season');
+  const summary = el('div', { class: 'tracker-summary' }, ring.node, el('div', { class: 'tracker-figs' }, watched.node, left.node, season.node));
   const next = el('div', { class: 'tracker-next', attrs: { hidden: true } });
-  const tabs = el('div', { class: 'chips season-tabs', attrs: { role: 'group', 'aria-label': 'Seasons' } });
+  const tabs = el('div', { class: 'season-strip', attrs: { role: 'group', 'aria-label': 'Seasons' } });
   const seasonHead = el('div');
-  const tip = el('p', { class: 'season-tip', text: 'Tip: long-press (or Shift-click) an episode to mark everything up to it.' });
+  const tip = el('p', { class: 'season-tip', text: 'Tip: long-press an episode (or Shift-click) to mark everything up to it.' });
   const note = el('p', { class: 'tracker-note', attrs: { hidden: true } });
   const list = el('div', { class: 'ep-list' });
-  refs.body.replaceChildren(next, tabs, seasonHead, tip, note, list);
-  nodes = { next, tabs, seasonHead, list, note };
+  refs.body.replaceChildren(summary, next, tabs, seasonHead, tip, note, list);
+  nodes = { summary, ring, figs: { watched: watched.value, left: left.value, season: season.value, seasonLabel: season.caption }, next, tabs, seasonHead, list, note };
 }
 
 function renderFailure(entry) {
@@ -641,8 +684,8 @@ export async function openTracker(entry) {
   renderPoster();
   r.title.textContent = entry.title || 'Untitled';
   r.meta.textContent = 'Loading episodes…';
-  r.ring.set(entry.progress ? (progressSummary(entry) || { pct: 0 }).pct : 0, false);
-  r.body.replaceChildren(...Array.from({ length: 6 }, () => el('div', { class: 'ep-skeleton', attrs: { 'aria-hidden': 'true', style: 'margin:8px 12px' } })));
+  r.body.replaceChildren(el('div', { class: 'ep-list', attrs: { style: 'margin-top:20px' } }, ...Array.from({ length: 6 }, () => el('div', { class: 'ep-skeleton', attrs: { 'aria-hidden': 'true' } }))));
+  nodes = null;
   openModal(r.root, { initialFocus: '.tracker-close', onClose: onClosed });
 
   ctx.abort = new AbortController();
@@ -650,6 +693,7 @@ export async function openTracker(entry) {
   if (token !== ctx.token) return;
 
   if (basics) {
+    setBackdrop(basics.backdrop_path || basics.poster_path);
     const counts = airedCounts(basics);
     ctx.seasons = counts.seasons;
     ctx.totals = counts.totals;

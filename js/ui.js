@@ -69,7 +69,10 @@
     sparkle: '<path d="M12 3.5l1.9 5.2 5.1 1.8-5.1 1.8L12 17.5l-1.9-5.2L5 10.5l5.1-1.8zM18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
     palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.4 0 2-.9 2-1.8 0-1.2-.9-1.5-.9-2.6 0-1 .8-1.6 1.8-1.6H17a3.5 3.5 0 0 0 3.5-3.5C20.5 6.7 16.7 3.5 12 3.5zM7.5 12h.01M9.5 8h.01M14 7.5h.01"/>',
     eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
-    flag: '<path d="M6 20.5V4M6 5h11l-2 3.5L17 12H6"/>'
+    flag: '<path d="M6 20.5V4M6 5h11l-2 3.5L17 12H6"/>',
+    chevD: '<path d="M6.5 9.5L12 15l5.5-5.5"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'
   };
 
   function icon(name, size) {
@@ -447,16 +450,15 @@
   const STATUS_ICON = { plan: 'bookmark', watching: 'play', watched: 'check', dropped: 'close' };
   const STATUS_TEXT = { plan: 'Plan to watch', watching: 'Watching', watched: 'Watched', dropped: 'Dropped' };
 
+  /** Card action button: "+" when not saved, otherwise a quiet status glyph (never an overlay on the artwork). */
   function applySavedBadge(card) {
-    const poster = card.querySelector('.card-poster');
-    if (!poster) return;
+    const act = card.querySelector('.card-act[data-kind="add"]');
+    if (!act) return;
     const status = savedStatus(card.dataset.id, card.dataset.type);
-    let badge = poster.querySelector('.saved-badge');
-    if (!status) { if (badge) badge.remove(); return; }
-    if (badge && badge.dataset.status === status) return;
-    if (badge) badge.remove();
-    badge = el('span', { class: 'saved-badge', data: { status: status }, attrs: { role: 'img', 'aria-label': 'In your list: ' + STATUS_TEXT[status] } }, icon(STATUS_ICON[status], 15));
-    poster.appendChild(badge);
+    if ((act.dataset.status || '') === status) return;
+    act.dataset.status = status;
+    act.replaceChildren(icon(status ? STATUS_ICON[status] : 'plus', 20));
+    act.setAttribute('aria-label', status ? 'In your list: ' + STATUS_TEXT[status] + '. Change' : 'Add ' + (card.dataset.title || 'title') + ' to watchlist');
   }
 
   function decorateSaved(scope) {
@@ -658,38 +660,44 @@
     return type === 'tv' ? 'TV' : 'Movie';
   }
 
-  /** Poster card for TMDB results (home rows, discover and search grids). */
-  function createSmallCard(item, explicitType) {
+  /**
+   * Poster (or, with options.wide, backdrop) card for TMDB results.
+   * Artwork stays clean: title, rating and an intentional "+" control live below the image.
+   */
+  function createSmallCard(item, explicitType, options) {
+    const wide = !!(options && options.wide);
     const type = typeOf(item, explicitType);
     const title = titleOf(item);
     const year = yearOf(item);
     const rating = ratingOf(item);
     const id = Number(item.id);
 
-    const card = el('article', { class: 'card', data: { id: id, type: type } });
+    const card = el('article', { class: 'card' + (wide ? ' card-wide' : ''), data: { id: id, type: type, title: title } });
     const open = el('button', { class: 'card-open', attrs: { type: 'button', 'aria-label': 'Open details: ' + title } });
     const poster = el('span', { class: 'card-poster' });
     poster.appendChild(posterFallback());
-    if (item.poster_path) {
-      poster.appendChild(posterImage(window.tmdbImage(item.poster_path, 'w342'), '', {
-        srcset: window.tmdbImage(item.poster_path, 'w185') + ' 185w, ' + window.tmdbImage(item.poster_path, 'w342') + ' 342w, ' + window.tmdbImage(item.poster_path, 'w500') + ' 500w'
+    const path = wide ? (item.backdrop_path || item.poster_path) : item.poster_path;
+    if (path) {
+      const sizes = wide ? ['w300', 'w780', 'w1280'] : ['w185', 'w342', 'w500'];
+      poster.appendChild(posterImage(window.tmdbImage(path, sizes[1]), '', {
+        srcset: window.tmdbImage(path, sizes[0]) + ' ' + sizes[0].slice(1) + 'w, ' + window.tmdbImage(path, sizes[1]) + ' ' + sizes[1].slice(1) + 'w, ' + window.tmdbImage(path, sizes[2]) + ' ' + sizes[2].slice(1) + 'w',
+        sizes: wide ? '(max-width: 599px) 72vw, 380px' : '(max-width: 599px) 45vw, 200px'
       }));
     }
-    if (rating) {
-      poster.appendChild(el('span', { class: 'card-rating' }, icon('star', 12), el('span', { text: rating })));
-    }
-    open.appendChild(poster);
-    open.appendChild(el('span', { class: 'card-title', text: title }));
-    open.appendChild(el('span', { class: 'card-sub', text: [year, typeLabel(type)].filter(Boolean).join(' · ') }));
+    const sub = el('span', { class: 'card-sub' });
+    if (rating) sub.append(icon('star', 12), el('span', { text: rating + ' ·' }));
+    sub.appendChild(el('span', { text: [year, typeLabel(type)].filter(Boolean).join(' · ') }));
+    open.append(poster, el('span', { class: 'card-text' }, el('span', { class: 'card-title', text: title }), sub));
     card.appendChild(open);
 
     const addPayload = () => ({ id: id, title: title, poster: storedPoster(item), type: type, category: suggestCategory(type, item.original_language, item.genre_ids) });
-    applySavedBadge(card);
     card.appendChild(el('button', {
-      class: 'card-add',
+      class: 'card-act',
+      data: { kind: 'add', status: '' },
       attrs: { type: 'button', 'aria-label': 'Add ' + title + ' to watchlist' },
       on: { click: (e) => { e.stopPropagation(); if (window.showAddModal) window.showAddModal(addPayload()); } }
-    }, icon('plus', 18)));
+    }, icon('plus', 20)));
+    applySavedBadge(card);
 
     open.addEventListener('click', () => { if (window.showItemDetails) window.showItemDetails(id, type); });
     attachLongPress(open, () => { if (window.showAddModal) window.showAddModal(addPayload()); });
@@ -698,15 +706,15 @@
 
   /**
    * Card for a saved watchlist entry.
-   * opts: { statusLabel, categoryLabel, subText, status, onOpen(entry), onManage(entry) }
+   * opts: { statusLabel, categoryLabel, subText, subAccent, status, progress:{pct,done}, onOpen(entry), onManage(entry) }
    */
   function createWatchlistCard(entry, opts) {
     const o = opts || {};
     const title = String(entry.title || 'Untitled');
     const type = entry.category === 'movie' ? 'movie' : 'tv';
 
-    const card = el('article', { class: 'card card-saved', data: { id: entry.id, type: type, docid: entry.docId } });
-    const open = el('button', { class: 'card-open', attrs: { type: 'button', 'aria-label': 'Open details: ' + title } });
+    const card = el('article', { class: 'card card-saved', data: { id: entry.id, type: type, docid: entry.docId, title: title } });
+    const open = el('button', { class: 'card-open', attrs: { type: 'button', 'aria-label': 'Open: ' + title } });
     const poster = el('span', { class: 'card-poster' });
     poster.appendChild(posterFallback());
 
@@ -716,41 +724,28 @@
       // Smaller rendition of the same TMDB image; the stored value is not touched.
       poster.appendChild(posterImage(posterUrl.replace('/t/p/w500/', '/t/p/w342/'), ''));
     }
+    open.appendChild(poster);
     if (o.progress) {
-      const bar = el('span', { class: 'card-progress' + (o.progress.done ? ' done' : ''), attrs: { 'aria-hidden': 'true' } });
+      const bar = el('span', { class: 'card-bar card-progress' + (o.progress.done ? ' done' : ''), attrs: { 'aria-hidden': 'true' } });
       const fill = document.createElement('i');
       fill.style.setProperty('--p', Math.max(0, Math.min(100, o.progress.pct || 0)) + '%');
       bar.appendChild(fill);
-      poster.appendChild(bar);
+      open.appendChild(bar);
     }
-    open.appendChild(poster);
-    open.appendChild(el('span', { class: 'card-title', text: title }));
-    open.appendChild(el('span', { class: 'card-sub' },
-      el('span', { class: 'status-dot', attrs: { 'data-status': o.status || '', 'aria-hidden': 'true' } }),
-      el('span', { class: 'sr-only', text: o.statusLabel ? 'Status: ' + o.statusLabel + '. ' : '' }),
-      el('span', { class: o.subAccent ? 'card-next' : '', text: o.subText || o.categoryLabel || '' })
+    open.appendChild(el('span', { class: 'card-text' },
+      el('span', { class: 'card-title', text: title }),
+      el('span', { class: 'card-sub' },
+        el('span', { class: 'status-dot', attrs: { 'data-status': o.status || '', 'aria-hidden': 'true' } }),
+        el('span', { class: 'sr-only', text: o.statusLabel ? 'Status: ' + o.statusLabel + '. ' : '' }),
+        el('span', { class: o.subAccent ? 'card-next' : '', text: o.subText || o.categoryLabel || '' })
+      )
     ));
     card.appendChild(open);
 
-    if (o.quick && typeof o.quick.onClick === 'function') {
-      const quick = el('button', {
-        class: 'card-quick',
-        attrs: { type: 'button', 'aria-label': o.quick.label || 'Mark next episode watched' },
-        on: {
-          click: async (e) => {
-            e.stopPropagation();
-            if (quick.classList.contains('is-busy')) return;
-            quick.classList.add('is-busy');
-            try { await o.quick.onClick(entry, card); } finally { quick.classList.remove('is-busy'); }
-          }
-        }
-      }, icon('check', 20));
-      card.appendChild(quick);
-    }
-
     if (typeof o.onManage === 'function') {
       card.appendChild(el('button', {
-        class: 'card-manage',
+        class: 'card-act',
+        data: { kind: 'manage' },
         attrs: { type: 'button', 'aria-label': 'Manage ' + title, 'aria-haspopup': 'dialog' },
         on: { click: (e) => { e.stopPropagation(); o.onManage(entry); } }
       }, icon('more', 20)));
@@ -764,7 +759,52 @@
     return card;
   }
 
-  /** Full-bleed featured slide for the home hero. */
+  /**
+   * "Continue watching" list card: small poster, title, next episode, thin progress and an explicit check button.
+   * opts: { next, meta, pct, done, actLabel, onOpen(), onAct() }
+   */
+  function createContinueCard(entry, opts) {
+    const o = opts || {};
+    const title = String(entry.title || 'Untitled');
+    const poster = el('span', { class: 'cw-poster' }, posterFallback());
+    let posterUrl = typeof entry.poster === 'string' ? entry.poster : '';
+    if (!/^https:\/\//i.test(posterUrl) || /dummyimage\.com/i.test(posterUrl)) posterUrl = '';
+    if (posterUrl) poster.appendChild(posterImage(posterUrl.replace('/t/p/w500/', '/t/p/w185/'), ''));
+
+    const text = el('span', { class: 'cw-text' },
+      el('span', { class: 'cw-title', text: title }),
+      o.next ? el('span', { class: 'cw-next', text: o.next }) : null,
+      el('span', { class: 'cw-meta', text: o.meta || '' })
+    );
+    if (typeof o.pct === 'number') {
+      const bar = el('span', { class: 'card-bar' + (o.done ? ' done' : ''), attrs: { 'aria-hidden': 'true' } });
+      const fill = document.createElement('i');
+      fill.style.setProperty('--p', Math.max(0, Math.min(100, o.pct)) + '%');
+      bar.appendChild(fill);
+      text.appendChild(bar);
+    }
+
+    const card = el('article', { class: 'cw-card', data: { id: entry.id, docid: entry.docId } });
+    card.appendChild(el('button', { class: 'cw-open', attrs: { type: 'button', 'aria-label': 'Open ' + title }, on: { click: () => { if (typeof o.onOpen === 'function') o.onOpen(entry); } } }, poster, text));
+    if (typeof o.onAct === 'function') {
+      const act = el('button', {
+        class: 'cw-act',
+        attrs: { type: 'button', 'aria-label': o.actLabel || 'Mark next episode watched' },
+        on: {
+          click: async (e) => {
+            e.stopPropagation();
+            if (act.classList.contains('is-busy')) return;
+            act.classList.add('is-busy');
+            try { await o.onAct(entry, card); } finally { act.classList.remove('is-busy'); }
+          }
+        }
+      }, el('span', {}, icon('check', 20)));
+      card.appendChild(act);
+    }
+    return card;
+  }
+
+  /** Full-bleed featured slide for the home hero (stacked + cross-faded by the carousel in js/app.js). */
   function createHeroSlide(item, options) {
     const o = options || {};
     const title = titleOf(item);
@@ -779,6 +819,7 @@
       attrs: { role: 'group', 'aria-roledescription': 'slide', 'aria-label': o.label || title }
     });
 
+    const media = el('div', { class: 'hero-media' });
     if (item.backdrop_path) {
       const img = el('img', { class: 'hero-backdrop', attrs: { alt: '', decoding: 'async', draggable: 'false' } });
       img.loading = o.eager ? 'eager' : 'lazy';
@@ -788,37 +829,103 @@
       img.srcset = window.tmdbImage(item.backdrop_path, 'w780') + ' 780w, ' + window.tmdbImage(item.backdrop_path, 'w1280') + ' 1280w';
       img.sizes = '100vw';
       img.src = window.tmdbImage(item.backdrop_path, 'w780');
-      slide.appendChild(img);
+      if (img.complete && img.naturalWidth > 0) img.classList.add('loaded');
+      media.appendChild(img);
     }
-    slide.appendChild(el('div', { class: 'hero-scrim', attrs: { 'aria-hidden': 'true' } }));
+    slide.append(media, el('div', { class: 'hero-scrim', attrs: { 'aria-hidden': 'true' } }));
 
-    const metaParts = [year, typeLabel(type)];
     const meta = el('p', { class: 'hero-meta' });
     if (rating) meta.appendChild(el('span', { class: 'hero-rating' }, icon('star', 14), el('span', { text: rating })));
-    meta.appendChild(el('span', { text: metaParts.filter(Boolean).join(' · ') }));
+    meta.appendChild(el('span', { text: [year, typeLabel(type)].filter(Boolean).join(' · ') }));
 
     const body = el('div', { class: 'hero-body' },
       el('p', { class: 'hero-eyebrow', text: o.eyebrow || 'Trending this week' }),
       el('h2', { class: 'hero-title', text: title }),
-      meta
+      meta,
+      el('p', { class: 'hero-overview', text: item.overview || '' }),
+      el('div', { class: 'hero-actions' },
+        el('button', {
+          class: 'btn btn-primary',
+          attrs: { type: 'button' },
+          on: { click: () => { if (window.showItemDetails) window.showItemDetails(id, type); } }
+        }, icon('play', 18), 'Details'),
+        el('button', {
+          class: 'btn btn-glass btn-circle',
+          attrs: { type: 'button', 'aria-label': 'Add ' + title + ' to watchlist' },
+          on: { click: () => { if (window.showAddModal) window.showAddModal({ id: id, title: title, poster: storedPoster(item), type: type, category: suggestCategory(type, item.original_language, item.genre_ids) }); } }
+        }, icon('plus', 22))
+      )
     );
-    if (item.overview) body.appendChild(el('p', { class: 'hero-overview', text: item.overview }));
-
-    body.appendChild(el('div', { class: 'hero-actions' },
-      el('button', {
-        class: 'btn btn-primary',
-        attrs: { type: 'button' },
-        on: { click: () => { if (window.showItemDetails) window.showItemDetails(id, type); } }
-      }, 'Details'),
-      el('button', {
-        class: 'btn btn-glass',
-        attrs: { type: 'button', 'aria-label': 'Add ' + title + ' to watchlist' },
-        on: { click: () => { if (window.showAddModal) window.showAddModal({ id: id, title: title, poster: storedPoster(item), type: type, category: suggestCategory(type, item.original_language, item.genre_ids) }); } }
-      }, icon('plus', 18), 'Watchlist')
-    ));
+    if (!item.overview) body.querySelector('.hero-overview').remove();
     slide.appendChild(body);
     return slide;
   }
+
+  // ---------------------------------------------------------------------------
+  // Dropdown menu: progressive enhancement of a native <select> (the select stays the source of truth)
+  // ---------------------------------------------------------------------------
+  let openMenu = null;
+
+  function closeMenu() {
+    if (!openMenu) return;
+    const { pop, button } = openMenu;
+    pop.classList.remove('show');
+    button.setAttribute('aria-expanded', 'false');
+    setTimeout(() => pop.remove(), 220);
+    openMenu = null;
+  }
+
+  function enhanceSelect(select) {
+    if (!select || select.dataset.menu === '1') return;
+    select.dataset.menu = '1';
+    const label = el('span');
+    const button = el('button', { class: 'menu-btn', attrs: { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': (select.getAttribute('aria-label') || 'Sort') + ': ' } }, label, icon('chevD', 16));
+    select.insertAdjacentElement('afterend', button);
+
+    const labelOf = (opt) => opt.textContent.trim();
+    function sync() {
+      const opt = select.options[select.selectedIndex];
+      label.textContent = opt ? labelOf(opt) : '';
+      button.setAttribute('aria-label', 'Sort: ' + label.textContent);
+    }
+    const desc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    Object.defineProperty(select, 'value', { configurable: true, get() { return desc.get.call(this); }, set(v) { desc.set.call(this, v); sync(); } });
+    select.addEventListener('change', sync);
+    sync();
+
+    function show() {
+      closeMenu();
+      sync();
+      const pop = el('div', { class: 'menu-pop', attrs: { role: 'menu' } });
+      Array.from(select.options).forEach((opt) => {
+        const item = el('button', {
+          class: 'menu-item',
+          attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': opt.selected ? 'true' : 'false' },
+          on: { click: () => { select.value = opt.value; select.dispatchEvent(new Event('change', { bubbles: true })); closeMenu(); button.focus({ preventScroll: true }); } }
+        }, el('span', { text: labelOf(opt) }), icon('check', 18));
+        pop.appendChild(item);
+      });
+      document.body.appendChild(pop);
+      const r = button.getBoundingClientRect();
+      const width = Math.max(190, pop.offsetWidth);
+      const left = Math.min(Math.max(12, r.right - width), window.innerWidth - width - 12);
+      pop.style.left = left + 'px';
+      pop.style.top = (r.bottom + 8) + 'px';
+      pop.style.transformOrigin = (r.right - left) + 'px top';
+      requestAnimationFrame(() => pop.classList.add('show'));
+      button.setAttribute('aria-expanded', 'true');
+      openMenu = { pop, button };
+      const first = pop.querySelector('[aria-checked="true"]') || pop.firstChild;
+      if (first) first.focus({ preventScroll: true });
+    }
+
+    button.addEventListener('click', (e) => { e.stopPropagation(); if (openMenu && openMenu.button === button) closeMenu(); else show(); });
+  }
+
+  document.addEventListener('pointerdown', (e) => { if (openMenu && !openMenu.pop.contains(e.target) && !openMenu.button.contains(e.target)) closeMenu(); });
+  document.addEventListener('keydown', (e) => { if (openMenu && e.key === 'Escape') { e.stopPropagation(); closeMenu(); } }, true);
+  window.addEventListener('resize', closeMenu);
+  window.addEventListener('scroll', closeMenu, { passive: true });
 
   // ---------------------------------------------------------------------------
   // Horizontal rows: mouse drag-scroll (touch already scrolls natively)
@@ -883,11 +990,13 @@
     enableDragScroll, stagger, attachLongPress, posterImage, posterFallback, typeLabel,
     yearOf, ratingOf, typeOf, titleOf, storedPoster, reducedMotion,
     choiceGroup, rangeField, setBusy, createSheetRoot, enableSheetDrag, progressBar, ring,
-    suggestCategory, formatNumber, savedStatus, decorateSaved
+    suggestCategory, formatNumber, savedStatus, decorateSaved, enhanceSelect, createContinueCard, closeMenu
   };
   window.createSmallCard = createSmallCard;
   window.createWatchlistCard = createWatchlistCard;
   window.createHeroSlide = createHeroSlide;
+  window.createContinueCard = createContinueCard;
+  window.enhanceSelect = enhanceSelect;
   window.enableDragScroll = enableDragScroll;
   window.showToast = showToast;
 })();

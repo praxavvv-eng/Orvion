@@ -23,7 +23,7 @@ const $ = (id) => document.getElementById(id);
 const META_KEY = 'orvion:meta:v1';
 const META_MAX_AGE = 60 * 24 * 60 * 60 * 1000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const STATUS_COLORS = { plan: 'var(--status-plan)', watching: 'var(--status-watching)', watched: 'var(--status-watched)', dropped: 'var(--status-dropped)' };
+const STATUS_COLORS = { plan: 'var(--st-plan)', watching: 'var(--st-watching)', watched: 'var(--st-watched)', dropped: 'var(--st-dropped)' };
 const CATEGORY_COLORS = { movie: '#60a5fa', series: '#a78bfa', anime: '#f472b6', kdrama: '#fb923c', other: '#94a3b8' };
 
 // ---------------------------------------------------------------------------
