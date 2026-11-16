@@ -1,3 +1,25 @@
+ORVION v16 — REFINEMENT PASS (on top of v15)
+
+CHANGED BASED ON FEEDBACK
+- The green completion bar under the poster is gone. A finished title (all episodes marked, or status Watched) shows no bar at all;
+  only in-progress shows keep a thin accent bar. Same in Continue watching.
+
+NEW
+- Your rating: tap 1–5 stars in the Manage sheet (tap the same star again to clear). Saved instantly as one optional field
+  ("rating") on the entry. Shown on the card as "★ 4", sortable ("Your rating"), and summarised in Statistics (average + distribution).
+- Surprise me: on Plan to watch, picks a random title (respects the category chip and filter) and opens its details.
+- Episode tracker: opens scrolled to your next episode; marking an episode ahead of unwatched ones offers "Mark them" in one tap;
+  light haptic feedback on phones that support it (off when animations are None).
+- Settings > Data > Export backup (JSON): read-only download of your whole library (titles, statuses, ratings, progress). No writes.
+- Duplicate notice is now quiet: shown only on tabs that actually contain a duplicated title.
+- Smoother scrolling: off-screen sections/cards skip rendering until needed; press feedback on Continue watching cards.
+
+DATA: only the optional field "rating" is new (written when you tap a star). Existing data/IDs/schema untouched.
+
+FILES CHANGED IN v16: css/style.css, js/ui.js, js/app.js, js/tracker.js, js/stats.js, js/appearance.js, js/watchlist.js (adds saveRating only), watchlist.html
+
+----------------------------------------------------------------------------
+
 ORVION v15 — CINEMA REDESIGN (visual + interaction redesign; data layer untouched)
 
 DATA SAFETY

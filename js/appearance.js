@@ -3,6 +3,8 @@
 // Settings › Appearance: Navigation style (with a live, tappable preview), theme (mode, presets, accent) and display
 // (glass, density, cards, motion). The engines live in js/boot.js (window.OrvionTheme) and js/nav.js
 // (window.OrvionNav); this file only builds the interface. Every change applies instantly and is saved.
+import { getLibraryCached } from './watchlist.js';
+
 const UI = window.OrvionUI;
 const Theme = window.OrvionTheme;
 const Nav = window.OrvionNav;
@@ -136,6 +138,26 @@ function buildSheet() {
   const displayGroup = group('Display', el('div', { class: 'settings-card' },
     el('div', { class: 'field' }, glass.node), densityGroup.node, cardsGroup.node, motionGroup.node));
 
+  // ---------- Data: read-only JSON backup of the library ----------
+  const exportBtn = el('button', { class: 'btn btn-glass btn-block', attrs: { type: 'button' } }, UI.icon('download', 18), el('span', { text: 'Export backup (JSON)' }));
+  exportBtn.addEventListener('click', async () => {
+    UI.setBusy(exportBtn, true);
+    const result = await getLibraryCached({ force: true });
+    UI.setBusy(exportBtn, false);
+    if (!result.success) { UI.showToast(result.message || 'Couldn’t read your library to export it', 'error'); return; }
+    const payload = { app: 'Orvion', exportedAt: new Date().toISOString(), count: result.items.length, items: result.items };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = el('a', { attrs: { href: url, download: 'orvion-backup-' + new Date().toISOString().slice(0, 10) + '.json' } });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    UI.showToast('Backup saved · ' + result.items.length + ' titles', 'success');
+  });
+  const dataGroup = group('Data', el('div', { class: 'settings-card' }, exportBtn),
+    el('p', { class: 'field-hint', text: 'A read-only copy of your titles, statuses, ratings and episode progress. Nothing in your library is changed.' }));
+
   const resetBtn = el('button', { class: 'link-btn', text: 'Reset', attrs: { type: 'button', 'aria-label': 'Reset all appearance settings' }, on: { click: () => { Theme.reset(); sync(); UI.showToast('Appearance reset', 'info'); } } });
   const doneBtn = el('button', { class: 'btn btn-primary btn-block', text: 'Done', attrs: { type: 'button' }, on: { click: () => closeModal(root) } });
 
@@ -144,7 +166,7 @@ function buildSheet() {
       el('div', {}, el('h2', { class: 'sheet-title', text: 'Settings', attrs: { id: 'settingsTitle' } }), el('p', { class: 'sheet-sub', text: 'Appearance' })),
       resetBtn
     ),
-    el('div', { class: 'sheet-body' }, navGroup, themeGroup, displayGroup),
+    el('div', { class: 'sheet-body' }, navGroup, themeGroup, displayGroup, dataGroup),
     el('div', { class: 'sheet-actions' }, doneBtn)
   );
 

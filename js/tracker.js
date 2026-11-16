@@ -527,6 +527,18 @@ async function loadSeasonView(number, token) {
   nodes.note.hidden = !ctx.offlineSeason;
   if (ctx.offlineSeason) nodes.note.textContent = 'Episode titles couldn’t be loaded, so episodes are shown by number. Your progress still saves normally.';
   paintAll();
+
+  // Bring the episode you are about to watch into view (only when it is in this season and off-screen).
+  const summary = summaryNow();
+  const target = summary && summary.next && summary.next.s === number ? ctx.rows.get(summary.next.e) : null;
+  if (target && refs && !ctx.scrolled) {
+    ctx.scrolled = true;
+    requestAnimationFrame(() => {
+      const box = refs.body.getBoundingClientRect();
+      const r = target.getBoundingClientRect();
+      if (r.bottom > box.bottom - 40 || r.top < box.top) refs.body.scrollTo({ top: refs.body.scrollTop + (r.top - box.top) - box.height * 0.35, behavior: UI.reducedMotion() ? 'auto' : 'smooth' });
+    });
+  }
 }
 
 function selectSeason(number) {
@@ -583,7 +595,23 @@ function markEpisode(season, episode, jump) {
     ctx.season = season;
     void loadSeasonView(season, ctx.token);
   }
+  UI.haptic(adding ? 10 : 6);
   finishChange([key]);
+
+  // Marked something ahead of unwatched aired episodes? Offer to fill the gap in one tap.
+  if (adding && season > 0) {
+    const have = new Set(watchedOf(season));
+    const aired = Number(ctx.totals[key]) || 0;
+    let gap = 0;
+    for (let e = 1; e < Math.min(episode, aired + 1); e += 1) if (!have.has(e)) gap += 1;
+    if (gap > 0) {
+      UI.showToast(gap + (gap === 1 ? ' earlier episode is' : ' earlier episodes are') + ' still unwatched', 'info', {
+        duration: 6000,
+        actionLabel: 'Mark them',
+        onAction: () => markUpTo(season, episode)
+      });
+    }
+  }
 }
 
 function snapshotWatched() {
@@ -677,7 +705,7 @@ export async function openTracker(entry) {
   const r = ensureSheet();
   if (ctx.abort) ctx.abort.abort();
   const token = ++ctx.token;
-  Object.assign(ctx, { entry, seasons: [], totals: {}, ongoing: false, season: 1, episodes: [], offlineSeason: false, promptedDone: false });
+  Object.assign(ctx, { entry, seasons: [], totals: {}, ongoing: false, season: 1, episodes: [], offlineSeason: false, promptedDone: false, scrolled: false });
   ctx.rows.clear();
   ctx.abort = null;
 

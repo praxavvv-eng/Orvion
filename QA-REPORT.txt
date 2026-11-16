@@ -1,7 +1,8 @@
 ORVION v15 — QA REPORT
 
 TESTED (real Chromium; TMDB and Firestore replaced by in-memory mocks that implement dotted-path updates)
-136 automated checks passed, 0 failed, across 4 suites:
+159 automated checks passed, 0 failed, across 5 suites (v16 adds: completion bar removed, ratings write/clear/sort/stats,
+Surprise me, skipped-episode hint, JSON export with zero library writes):
 - Home: hero from TMDB data, Continue watching, one-tap next episode (field-path write), card updates to "Caught up"
 - Hero: 6 slides, auto-advance (~6.5s), cross-fade observed mid-transition, pager jump, swipe left/right, pause on hover and resume,
   no autoplay under reduced motion

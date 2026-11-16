@@ -13,6 +13,7 @@ import {
   loadLibrary,
   findEntriesByTmdbId,
   getLibraryCached,
+  saveRating,
   progressSummary,
   STATUSES,
   CATEGORIES,
@@ -407,6 +408,34 @@ function ensureManageSheet() {
     options: STATUSES.map((s) => ({ value: s.value, label: s.label }))
   });
 
+  // Your own rating: one tap saves it (tap the same star again to clear). Stored as one optional field on the entry.
+  const starButtons = [];
+  const starsRow = el('div', { class: 'stars', attrs: { role: 'radiogroup', 'aria-label': 'Your rating' } });
+  for (let n = 1; n <= 5; n += 1) {
+    const btn = el('button', { class: 'star-btn', attrs: { type: 'button', role: 'radio', 'aria-label': n + (n === 1 ? ' star' : ' stars'), 'aria-checked': 'false' } }, icon('star', 28));
+    btn.addEventListener('click', async () => {
+      const entry = manageEntry;
+      if (!entry) return;
+      const previous = Number(entry.rating) || 0;
+      const next = previous === n ? 0 : n;
+      entry.rating = next;
+      paintStars(next);
+      UI.haptic(10);
+      const result = await saveRating(entry.docId, next);
+      if (!result.success) {
+        entry.rating = previous;
+        paintStars(previous);
+        UI.showToast(result.message || 'Couldn’t save your rating', 'error');
+        return;
+      }
+      watchlistState.apply(entry.docId, (e) => { e.rating = next; });
+    });
+    starButtons.push(btn);
+    starsRow.appendChild(btn);
+  }
+  const paintStars = (value) => starButtons.forEach((b, i) => { b.classList.toggle('on', i < value); b.setAttribute('aria-checked', i + 1 === value ? 'true' : 'false'); });
+  const ratingField = el('fieldset', { class: 'field rating-field' }, el('legend', { class: 'field-label', text: 'Your rating' }), starsRow);
+
   const removeBtn = el('button', { class: 'btn btn-danger', attrs: { type: 'button' } }, icon('trash', 18), 'Remove');
   const cancelBtn = el('button', { class: 'btn btn-glass', text: 'Cancel', attrs: { type: 'button' }, on: { click: () => closeModal(root) } });
   const saveBtn = el('button', { class: 'btn btn-primary', attrs: { type: 'button' } }, el('span', { class: 'btn-label', text: 'Save' }));
@@ -427,7 +456,7 @@ function ensureManageSheet() {
 
   sheet.append(
     el('div', { class: 'sheet-head' }, title, sub),
-    el('div', { class: 'sheet-body' }, statusGroup.node, trackBtn),
+    el('div', { class: 'sheet-body' }, statusGroup.node, ratingField, trackBtn),
     mainActions,
     confirmBox
   );
@@ -474,7 +503,7 @@ function ensureManageSheet() {
     closeModal(root);
   });
 
-  manageSheet = { root, sub, statusGroup, showConfirm, trackBtn };
+  manageSheet = { root, sub, statusGroup, showConfirm, trackBtn, paintStars };
   return manageSheet;
 }
 
@@ -486,6 +515,7 @@ function showManageSheet(entry) {
   sheet.statusGroup.set(normalizeStatus(entry.status));
   sheet.showConfirm(false);
   sheet.trackBtn.hidden = !canTrack(entry);
+  sheet.paintStars(Number(entry.rating) || 0);
   openModal(sheet.root, { initialFocus: 'input:checked' });
 }
 
@@ -799,8 +829,8 @@ function continueCard(entry, rerender) {
   return window.createContinueCard(entry, {
     next: hasNext ? 'Next · S' + summary.next.s + ' E' + summary.next.e : (summary && summary.completed ? 'Caught up' : ''),
     meta: summary && summary.total ? summary.watched + ' of ' + summary.total + ' episodes · ' + categoryLabel(entry.category) : categoryLabel(entry.category),
-    pct: summary && summary.total ? summary.pct : undefined,
-    done: !!(summary && summary.completed),
+    pct: summary && summary.total && !summary.completed ? summary.pct : undefined,
+    done: false,
     actLabel: hasNext ? 'Mark S' + summary.next.s + ' E' + summary.next.e + ' watched' : undefined,
     onAct: hasNext ? async () => {
       const result = markNextEpisode(entry);
@@ -925,6 +955,8 @@ function sortEntries(list) {
     copy.sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' }));
   } else if (watchlistState.sort === 'updated') {
     copy.sort((a, b) => updatedAt(b) - updatedAt(a));
+  } else if (watchlistState.sort === 'rating') {
+    copy.sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0) || (Number(b.added) || 0) - (Number(a.added) || 0));
   } else {
     copy.sort((a, b) => (Number(b.added) || 0) - (Number(a.added) || 0));
   }
@@ -948,10 +980,12 @@ function watchlistCard(entry) {
   const summary = progressSummary(entry);
   const hasProgress = !!(summary && summary.total);
   let subText = addedText(entry);
+  const stars = Number(entry.rating) > 0 ? '★ ' + Math.round(Number(entry.rating)) + ' · ' : '';
   let subAccent = false;
   if (hasProgress && summary.next && status !== 'watched') { subText = 'Next · S' + summary.next.s + ' E' + summary.next.e; subAccent = true; }
   else if (hasProgress && summary.completed) subText = 'Completed · ' + summary.total + ' eps';
   else if (hasProgress) subText = summary.watched + ' / ' + summary.total + ' eps';
+  if (stars && !subAccent) subText = stars + (status === 'watched' ? categoryLabel(entry.category) : subText);
 
   return window.createWatchlistCard(entry, {
     status: status,
@@ -959,7 +993,8 @@ function watchlistCard(entry) {
     categoryLabel: categoryLabel(entry.category),
     subText: subText,
     subAccent: subAccent,
-    progress: hasProgress ? { pct: summary.pct, done: summary.completed } : null,
+    // A finished title needs no progress bar: you already know it is complete.
+    progress: hasProgress && !summary.completed && status !== 'watched' ? { pct: summary.pct, done: false } : null,
     onOpen: () => {
       if (status === 'watching' && canTrack(entry)) openTracker(entry);
       else showItemDetails(entry.id, type);
@@ -984,7 +1019,7 @@ function initWatchlist() {
   if (!content || !tabs || !chips) return;
 
   const savedSort = readPref(SORT_KEY, 'added');
-  watchlistState.sort = savedSort === 'title' || savedSort === 'updated' ? savedSort : 'added';
+  watchlistState.sort = ['title', 'updated', 'rating'].includes(savedSort) ? savedSort : 'added';
   const filterInput = $('libFilter');
   let batchObserver = null;
   if (sortSelect) sortSelect.value = watchlistState.sort;
@@ -1067,14 +1102,14 @@ function initWatchlist() {
     }
   }
 
-  function duplicateNote() {
-    const seen = new Map();
-    watchlistState.entries.forEach((e) => { const k = e.id + ':' + e.category; seen.set(k, (seen.get(k) || 0) + 1); });
-    let extra = 0;
-    seen.forEach((n) => { if (n > 1) extra += n - 1; });
-    if (!extra) return null;
+  /** Shown only on tabs that contain a title saved more than once (even if its twin sits in another tab). */
+  function duplicateNote(list) {
+    const counts = new Map();
+    watchlistState.entries.forEach((e) => { const k = e.id + ':' + e.category; counts.set(k, (counts.get(k) || 0) + 1); });
+    const affected = (list || []).filter((e) => counts.get(e.id + ':' + e.category) > 1).length;
+    if (!affected) return null;
     return el('p', { class: 'dupe-note', attrs: { role: 'note' } },
-      extra + (extra === 1 ? ' title appears' : ' titles appear') + ' more than once in your library (same TMDB id and category). Orvion never deletes anything automatically – remove the extra copies from the ⋯ menu when you’re ready.');
+      affected + (affected === 1 ? ' title here is' : ' titles here are') + ' saved more than once (same TMDB id and category). Orvion never deletes anything automatically – remove extra copies from the ⋯ menu when you’re ready.');
   }
 
   function renderSkeleton() {
@@ -1113,7 +1148,9 @@ function initWatchlist() {
     const inStatusAll = watchlistState.entries.filter((e) => normalizeStatus(e.status) === watchlistState.status);
     const inStatus = query ? inStatusAll.filter((e) => String(e.title || '').toLowerCase().indexOf(query) !== -1) : inStatusAll;
     renderChips(inStatus);
-    const dupes = duplicateNote();
+    const dupes = duplicateNote(inStatusAll);
+    const surprise = $('surpriseBtn');
+    if (surprise) surprise.hidden = !(watchlistState.status === 'plan' && surprisePool().length > 1);
 
     if (query && !inStatus.length) {
       content.replaceChildren(UI.createState({
@@ -1189,9 +1226,31 @@ function initWatchlist() {
 
   if (sortSelect) {
     sortSelect.addEventListener('change', () => {
-      watchlistState.sort = sortSelect.value === 'title' || sortSelect.value === 'updated' ? sortSelect.value : 'added';
+      watchlistState.sort = ['title', 'updated', 'rating'].includes(sortSelect.value) ? sortSelect.value : 'added';
       writePref(SORT_KEY, watchlistState.sort);
       render();
+    });
+  }
+
+  // "Surprise me": picks a random title from the Plan-to-watch list you are looking at (respecting the category chip + filter).
+  function surprisePool() {
+    const query = watchlistState.query.trim().toLowerCase();
+    return watchlistState.entries.filter((e) => normalizeStatus(e.status) === 'plan' &&
+      (watchlistState.category === 'all' || categoryKey(e) === watchlistState.category) &&
+      (!query || String(e.title || '').toLowerCase().indexOf(query) !== -1));
+  }
+  let lastSurprise = null;
+  const surpriseBtn = $('surpriseBtn');
+  if (surpriseBtn) {
+    surpriseBtn.addEventListener('click', () => {
+      const pool = surprisePool().filter((e) => e.docId !== lastSurprise);
+      if (!pool.length) return;
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      lastSurprise = pick.docId;
+      UI.haptic(12);
+      surpriseBtn.classList.add('spin');
+      setTimeout(() => surpriseBtn.classList.remove('spin'), 520);
+      setTimeout(() => showItemDetails(pick.id, pick.category === 'movie' ? 'movie' : 'tv'), UI.reducedMotion() ? 0 : 280);
     });
   }
 

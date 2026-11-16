@@ -71,6 +71,7 @@
     eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
     flag: '<path d="M6 20.5V4M6 5h11l-2 3.5L17 12H6"/>',
     chevD: '<path d="M6.5 9.5L12 15l5.5-5.5"/>',
+    shuffle: '<path d="M16 4h4v4M4 20L20 4M20 16v4h-4M15 15l5 5M4 4l5 5"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'
   };
@@ -106,6 +107,12 @@
   // ---------------------------------------------------------------------------
   // Formatting helpers
   // ---------------------------------------------------------------------------
+  /** Tiny tap feedback on phones that support it; silent when animations are turned off. */
+  function haptic(ms) {
+    if (reducedMotion() || !navigator.vibrate) return;
+    try { navigator.vibrate(ms || 8); } catch (e) { /* unsupported */ }
+  }
+
   function formatNumber(value) {
     try { return new Intl.NumberFormat().format(Math.round(Number(value) || 0)); } catch (e) { return String(Math.round(Number(value) || 0)); }
   }
@@ -989,7 +996,7 @@
     el, icon, showToast, openModal, closeModal, bindModal, segmented, createState, skeletonCards,
     enableDragScroll, stagger, attachLongPress, posterImage, posterFallback, typeLabel,
     yearOf, ratingOf, typeOf, titleOf, storedPoster, reducedMotion,
-    choiceGroup, rangeField, setBusy, createSheetRoot, enableSheetDrag, progressBar, ring,
+    haptic, choiceGroup, rangeField, setBusy, createSheetRoot, enableSheetDrag, progressBar, ring,
     suggestCategory, formatNumber, savedStatus, decorateSaved, enhanceSelect, createContinueCard, closeMenu
   };
   window.createSmallCard = createSmallCard;

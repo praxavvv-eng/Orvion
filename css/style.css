@@ -985,3 +985,29 @@ input[type="range"].range::-moz-range-thumb { width: 26px; height: 26px; border:
 .ep-row.unaired .ep-check .icon path { stroke-dasharray: none; stroke-dashoffset: 0; }
 .card-sub > span:not(.status-dot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .search-input:focus-visible, .text-pill:focus-visible { outline: none; }
+
+/* ---------- v16 refinements ---------- */
+/* A finished title needs no progress bar under its poster */
+.card-bar.done { display: none; }
+
+.page-head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.surprise-btn { flex: none; min-height: 40px; padding: 0 16px; font-size: 0.88rem; margin-bottom: 4px; }
+.surprise-btn .icon { transition: transform var(--d3) var(--ease); }
+.surprise-btn.spin .icon { transform: rotate(360deg) scale(1.15); }
+
+.rating-field .stars { display: flex; justify-content: space-between; padding: 6px 10px; border-radius: var(--r-md); background: var(--fill); }
+.star-btn { display: grid; place-items: center; width: 52px; height: 48px; color: var(--text-3); transition: transform var(--d2) var(--ease), color var(--d2); }
+.star-btn .icon { fill: transparent; transition: fill var(--d2), transform var(--d3) var(--ease); }
+.star-btn.on { color: var(--star); }
+.star-btn.on .icon { fill: var(--star); animation: pop var(--d3) var(--ease); }
+.star-btn:active { transform: scale(0.86); }
+.rating-summary { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+
+/* smoother scrolling on long pages */
+.section, .stat-card { content-visibility: auto; contain-intrinsic-size: auto 320px; }
+.modal.show .sheet, .hero-slide.is-active { will-change: transform; }
+.cw-open:active .cw-poster { transform: scale(0.96); }
+.cw-poster { transition: transform var(--d2) var(--ease); }
+.cw-card { transition: transform var(--d2) var(--ease); }
+.cw-card:active { transform: scale(0.985); }
+.dupe-note { padding: 10px 14px; font-size: 0.8rem; }

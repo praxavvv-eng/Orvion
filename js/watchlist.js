@@ -17,6 +17,7 @@
 //                             ongoing  boolean                      the show was still airing at last sync
 //                             last     { s, e }                     most recently marked episode
 //                             updated  number                       Date.now() of the last progress change
+//     rating       number   your own rating, 1-5 (0 or missing = not rated). Written only when you tap a star.
 //
 // This module never deletes or rewrites existing documents on its own. Documents are only
 // written when the user explicitly adds, changes the status of, tracks progress for, or removes an entry.
@@ -386,6 +387,23 @@ export async function findEntriesByTmdbId(tmdbId) {
   }
 }
 
+/** Save your own 1-5 star rating (0 clears it). Writes one optional field on the existing document. */
+export async function saveRating(docId, rating) {
+  const value = Math.round(Number(rating));
+  if (!docId || typeof docId !== "string" || !(value >= 0 && value <= 5)) return failure(invalidError("Choose a rating from 1 to 5."));
+  try {
+    assertOnline();
+    const { fs, db } = await getFirebase();
+    await withTimeout(fs.updateDoc(fs.doc(db, COLLECTION_NAME, docId), { rating: value }), WRITE_TIMEOUT_MS);
+    patchCachedEntry(docId, { rating: value });
+    return { success: true, rating: value };
+  } catch (error) {
+    const expected = error && (error.code === "orvion/offline" || error.code === "orvion/invalid");
+    (expected ? console.warn : console.error)("Rating save failed:", error && error.code, error);
+    return failure(error);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Library snapshot cache (localStorage).
 // Home, Stats and the "already saved" badges read this instead of re-reading every document on each page
@@ -576,6 +594,7 @@ window.watchlist = {
   load: loadLibrary,
   findByTmdbId: findEntriesByTmdbId,
   saveProgress: saveProgress,
+  saveRating: saveRating,
   progressSummary: progressSummary,
   getCached: getLibraryCached,
   getByStatusAndCategory: getItemsByStatusAndCategory,

@@ -90,6 +90,9 @@ export function computeStats(rawItems, meta, now) {
     completedByYear: {},
     genres: {},
     genreCoverage: 0,
+    ratingCounts: [0, 0, 0, 0, 0],
+    ratingSum: 0,
+    rated: 0,
     time: { minutes: 0, movies: 0, episodes: 0, unknown: 0 }
   };
 
@@ -116,6 +119,9 @@ export function computeStats(rawItems, meta, now) {
       stats.completedByYear[d.getFullYear()] = (stats.completedByYear[d.getFullYear()] || 0) + 1;
       stats.recentCompleted.push(entry);
     }
+
+    const stars = Math.round(Number(entry.rating) || 0);
+    if (stars >= 1 && stars <= 5) { stats.ratingCounts[stars - 1] += 1; stats.ratingSum += stars; stats.rated += 1; }
 
     const summary = progressSummary(entry);
     const tracked = trackedEpisodeCount(entry);
@@ -399,6 +405,23 @@ function milestonesCard(stats, index) {
   return card('Milestones', [grid], { wide: true, index });
 }
 
+function ratingsCard(stats, index) {
+  if (!stats.rated) return null;
+  const average = stats.ratingSum / stats.rated;
+  const max = Math.max(1, ...stats.ratingCounts);
+  const list = el('div', { class: 'hbars' });
+  for (let star = 5; star >= 1; star -= 1) {
+    const count = stats.ratingCounts[star - 1];
+    list.appendChild(el('div', { class: 'hbar' }, el('span', { class: 'hbar-name', text: star + ' ★' }), UI.progressBar((count / max) * 100), el('span', { class: 'hbar-value', text: String(count) })));
+  }
+  return card('Your ratings', [
+    el('div', { class: 'rating-summary' },
+      el('span', { class: 'hero-total', text: average.toFixed(1), attrs: { style: 'font-size:2.6rem' } }),
+      el('span', { class: 'hero-caption', text: 'average from ' + stats.rated + (stats.rated === 1 ? ' rated title' : ' rated titles') })),
+    list
+  ], { index });
+}
+
 function recentCard(stats, index) {
   if (!stats.recentCompleted.length) {
     return card('Recently completed', [el('p', { class: 'empty-hint', text: 'Titles you mark as Watched from now on will show up here with their completion date.' })], { index });
@@ -472,6 +495,7 @@ function render(root, stats, analysis) {
     episodes,
     timeNode,
     inProgressCard(stats, 5),
+    ratingsCard(stats, 5),
     activityCard(stats, 6),
     genreNode,
     recentCard(stats, 8),
